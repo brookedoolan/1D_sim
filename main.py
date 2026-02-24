@@ -1,71 +1,94 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from pathlib import Path
 
 from geometry.straight_geom import EngineGeometry
 from fluid.coolant_model import CoolantModel
 from fluid.gas_model import GasModel
 from solvers.regen_solver import RegenSolver
+from materials.cucr1zr import CuCr1Zr
+from geometry.rpa_loader import load_rpa_contour
+from geometry.straight_geom import EngineGeometry
 
-
-def radius_function(x):
-    # simple cylindrical chamber for now
-    return 0.05 * np.ones_like(x)
-
-length = 0.5
-n_nodes = 300
+BASE_DIR = Path(__file__).resolve().parent # Project root (folder containing main.py)
+contour_path = BASE_DIR / "geometry" / "rpa_contours" / "contour.txt"
+x, r = load_rpa_contour(contour_path) # Import RPA contour
 
 geom = EngineGeometry(
-    length=length,
-    n_nodes=n_nodes,
-    r_func=radius_function,
-    a=2e-3,
-    H=3e-3,
+    x=x,
+    r=r,
+    a=1.5e-3,
+    H=1.5e-3,
     N_channels=40,
-    t_wall=2e-3
+    t_wall=1.5e-3
 )
 
 coolant = CoolantModel(
     mdot=0.5,
-    fluid_name="Isopropanol"  # CoolProp fluid string
+    fluid_name="Ethanol"  # CoolProp fluid string
 )
 
 gas = GasModel(
-    Pc=3e6,
-    Tc=3300,
-    gamma=1.2,
-    c_star=1500,
-    At=np.pi*(0.02)**2
+    Pc_bar = 30,
+    MR = 1.5,
+    geometry = geom,
+    ox_name = 'LOX',
+    fuel_name = 'Ethanol' # RocketCEA does NOT have IPA
 )
 
-solver = RegenSolver(geom, coolant, gas)
-solver.solve(T_in=300, P_in=4e6)
+material = CuCr1Zr()
+
+solver = RegenSolver(geom, coolant, gas, material)
+solver.solve(T_in=298, P_in=4.5e6)
 
 x = geom.x
 
-plt.figure()
-plt.plot(x, solver.T_c)
-plt.xlabel("Axial position (m)")
-plt.ylabel("Coolant Temperature (K)")
-plt.title("Coolant Temperature")
+import matplotlib.pyplot as plt
+
+fig, axs = plt.subplots(2, 2, figsize=(12, 8))
+
+# --- Coolant Temperature ---
+axs[0, 0].plot(x, solver.T_c)
+axs[0, 0].set_xlabel("Axial position (m)")
+axs[0, 0].set_ylabel("Coolant Temperature (K)")
+axs[0, 0].set_title("Coolant Temperature")
+
+# --- Coolant Pressure ---
+axs[0, 1].plot(x, solver.P_c / 1e6)
+axs[0, 1].set_xlabel("Axial position (m)")
+axs[0, 1].set_ylabel("Coolant Pressure (MPa)")
+axs[0, 1].set_title("Coolant Pressure")
+
+# --- Gas-side Wall Temperature ---
+axs[1, 0].plot(x, solver.T_wg)
+axs[1, 0].set_xlabel("Axial position (m)")
+axs[1, 0].set_ylabel("Gas-side Wall Temperature (K)")
+axs[1, 0].set_title("Gas-side Wall Temperature")
+
+# --- Heat Flux ---
+axs[1, 1].plot(x, solver.q / 1e6)
+axs[1, 1].set_xlabel("Axial position (m)")
+axs[1, 1].set_ylabel("Heat Flux (MW/m²)")
+axs[1, 1].set_title("Heat Flux")
+
+plt.tight_layout()
 plt.show()
 
-plt.figure()
-plt.plot(x, solver.P_c/1e6)
-plt.xlabel("Axial position (m)")
-plt.ylabel("Coolant Pressure (MPa)")
-plt.title("Coolant Pressure")
-plt.show()
+# --- Mach Number --- 
+fig1, ax1 = plt.subplots()
 
-plt.figure()
-plt.plot(x, solver.T_wg)
-plt.xlabel("Axial position (m)")
-plt.ylabel("Gas-side Wall Temperature (K)")
-plt.title("Gas Side Wall Temperature")
-plt.show()
+# First axis for M
+ax1.plot(x, solver.M, label="Mach", color="blue")
+ax1.set_xlabel("Axial position (m)")
+ax1.set_ylabel("Mach number", color="blue")
+ax1.tick_params(axis='y', labelcolor='blue')
 
-plt.figure()
-plt.plot(x, solver.q/1e6)
-plt.xlabel("Axial position (m)")
-plt.ylabel("Heat Flux (MW/m^2)")
-plt.title("Heat Flux")
+# Second axis for radius
+ax2 = ax1.twinx()
+ax2.plot(x, geom.r, label="Radius", color="red")
+ax2.set_ylabel("Radius (m)", color="red")
+ax2.tick_params(axis='y', labelcolor='red')
+
+plt.title("Mach and Radius Profile")
+plt.grid(True)
 plt.show()
