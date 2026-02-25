@@ -1,4 +1,4 @@
-# 1D Regen Cooling Simulator
+# bit o f a jankkkkk attempt at 1D Regen Cooling Simulator
 
 ## Setup
 
@@ -11,7 +11,7 @@ python main.py
 
 
 ## Required Inputs
-This solver serves as a combined thermal & stress analysis. Requires input geometry, flow rates and performance characteristics from RPA (eventually 'stage 1' optimisation).
+This solver serves as a combined thermal & stress analysis. Requires input geometry, flow rates and performance characteristics from RPA
 
 Inputs:
 - RPA radius contour (can import direct .txt file from RPA)
