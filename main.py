@@ -24,16 +24,18 @@ geom = EngineGeometry(
 )
 
 coolant = CoolantModel(
-    mdot=0.5,
+    mdot=1.0,
     fluid_name="Ethanol"  # CoolProp fluid string
 )
 
 gas = GasModel(
-    Pc_bar = 30,
+    Pc_bar = 35,
     MR = 1.5,
     geometry = geom,
     ox_name = 'LOX',
-    fuel_name = 'Ethanol' # RocketCEA does NOT have IPA
+    fuel_name = 'Ethanol', # RocketCEA does NOT have IPA
+    mdot = 2.04543,
+    cstar = 1684.44
 )
 
 material = CuCr1Zr()
@@ -42,53 +44,66 @@ solver = RegenSolver(geom, coolant, gas, material)
 solver.solve(T_in=298, P_in=4.5e6)
 
 x = geom.x
+r = geom.r
 
-import matplotlib.pyplot as plt
+fig, axs = plt.subplots(2, 3, figsize=(16, 9))
 
-fig, axs = plt.subplots(2, 2, figsize=(12, 8))
-
-# --- Coolant Temperature ---
-axs[0, 0].plot(x, solver.T_c)
+# Coolant Temp
+axs[0, 0].plot(x, solver.T_c, label="Coolant T", color="tab:blue")
 axs[0, 0].set_xlabel("Axial position (m)")
-axs[0, 0].set_ylabel("Coolant Temperature (K)")
+axs[0, 0].set_ylabel("Temperature (K)")
 axs[0, 0].set_title("Coolant Temperature")
+axs[0, 0].grid(True)
 
-# --- Coolant Pressure ---
-axs[0, 1].plot(x, solver.P_c / 1e6)
+# Coolant Pressure
+axs[0, 1].plot(x, solver.P_c/1e6, label="Coolant P", color="tab:green")
 axs[0, 1].set_xlabel("Axial position (m)")
-axs[0, 1].set_ylabel("Coolant Pressure (MPa)")
+axs[0, 1].set_ylabel("Pressure (MPa)")
 axs[0, 1].set_title("Coolant Pressure")
+axs[0, 1].grid(True)
 
-# --- Gas-side Wall Temperature ---
-axs[1, 0].plot(x, solver.T_wg)
-axs[1, 0].set_xlabel("Axial position (m)")
-axs[1, 0].set_ylabel("Gas-side Wall Temperature (K)")
-axs[1, 0].set_title("Gas-side Wall Temperature")
+# Mach & Radius
+axM = axs[0, 2]
+axM.plot(x, solver.M, color="tab:blue")
+axM.set_xlabel("Axial position (m)")
+axM.set_ylabel("Mach", color="tab:blue")
+axM.tick_params(axis='y', labelcolor='tab:blue')
+axM.set_title("Mach + Radius")
+axM.grid(True)
 
-# --- Heat Flux ---
-axs[1, 1].plot(x, solver.q / 1e6)
-axs[1, 1].set_xlabel("Axial position (m)")
-axs[1, 1].set_ylabel("Heat Flux (MW/m²)")
-axs[1, 1].set_title("Heat Flux")
+axM2 = axM.twinx()
+axM2.plot(x, r, color="tab:red")
+axM2.set_ylabel("Radius (m)", color="tab:red")
+axM2.tick_params(axis='y', labelcolor='tab:red')
+
+# Gas wall temp & radius
+axTw = axs[1, 0]
+axTw.plot(x, solver.T_wg, color="tab:orange")
+axTw.set_xlabel("Axial position (m)")
+axTw.set_ylabel("Wall Temp (K)", color="tab:orange")
+axTw.set_title("Gas-side Wall Temperature")
+axTw.grid(True)
+
+axTw2 = axTw.twinx()
+axTw2.plot(x, r, color="tab:red")
+axTw2.set_ylabel("Radius (m)", color="tab:red")
+axTw2.tick_params(axis='y', labelcolor='tab:red')
+
+# Heat flux & radius
+axq = axs[1, 1]
+axq.plot(x, solver.q/1e6, color="tab:purple")
+axq.set_xlabel("Axial position (m)")
+axq.set_ylabel("Heat Flux (MW/m²)", color="tab:purple")
+axq.set_title("Heat Flux")
+axq.grid(True)
+
+axq2 = axq.twinx()
+axq2.plot(x, r, color="tab:red")
+axq2.set_ylabel("Radius (m)", color="tab:red")
+axq2.tick_params(axis='y', labelcolor='tab:red')
+
+# EMPTY PANEL for future
+axs[1, 2].axis("off")
 
 plt.tight_layout()
-plt.show()
-
-# --- Mach Number --- 
-fig1, ax1 = plt.subplots()
-
-# First axis for M
-ax1.plot(x, solver.M, label="Mach", color="blue")
-ax1.set_xlabel("Axial position (m)")
-ax1.set_ylabel("Mach number", color="blue")
-ax1.tick_params(axis='y', labelcolor='blue')
-
-# Second axis for radius
-ax2 = ax1.twinx()
-ax2.plot(x, geom.r, label="Radius", color="red")
-ax2.set_ylabel("Radius (m)", color="red")
-ax2.tick_params(axis='y', labelcolor='red')
-
-plt.title("Mach and Radius Profile")
-plt.grid(True)
 plt.show()

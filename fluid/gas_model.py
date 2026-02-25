@@ -1,17 +1,21 @@
 import numpy as np
 from rocketcea.cea_obj_w_units import CEA_Obj
+from scipy.optimize import brentq, fsolve
 
 # Bartz 
 
 class GasModel:
     
-    def __init__(self, Pc_bar, MR, geometry, ox_name, fuel_name):
+    def __init__(self, Pc_bar, MR, geometry, ox_name, fuel_name, mdot=None, cstar=None):
         
         self.Pc_bar = Pc_bar
         self.MR = MR
 
         self.geometry = geometry
         self.At = geometry.throat_area()
+        self.Rt = geometry.throat_radius_of_curvature()
+
+        self.Dt = np.sqrt(4*self.At/np.pi)
 
         self.cea = CEA_Obj(
             oxName=ox_name,
@@ -27,32 +31,19 @@ class GasModel:
             thermal_cond_units='W/cm-degC' # Need to convert to W/m-K, 1 W/cm-K = 100 W/m-K
         )
 
-        # FOR NOW ASSUMING 3 REGIONS. Use NASA CEA properly in future to get more accurate contour
-        # RocketCEA does NOT give continuous gas properties along contour
-        # 1. Chamer section, A > At upstream. Assume constant properties throughout.
-        # 2. Throat region, A = At
-        # 3. Diverging/nozzle region, A > At downstream. Use exit properties with equilibium modelling.
-        
-        # Note RocketCEA returns [chamber, throat, exit] with index 0 = chamber, index 1 = throat, index 2 = exit
-        
-        # Full interpolation would require parsing get_full_cea_output()
-        
-        # get_X_transport() returns list of heat capacity, viscosity, thermal cond, Pr
+        # Either provided by RPA or computed from CEA
+        if cstar is None:
+            self.c_star = self.cea.get_Cstar(Pc=self.Pc_bar, MR=self.MR)
+        else:
+            self.c_star = cstar
 
+        # Enforce choked mass flow
+        if mdot is None:
+            self.mdot = self.Pc_bar*1e5*self.At/self.c_star
+        else:
+            self.mdot = mdot 
 
-        # Chamber constants
-        self.Tc = self.cea.get_Tcomb(Pc=self.Pc_bar, MR=self.MR)
-        self.c_star = self.cea.get_Cstar(Pc=self.Pc_bar, MR=self.MR)
-
-        # Pre-store chamber values
-        self.gamma_ch = self.cea.get_Chamber_MolWt_gamma(self.Pc_bar, self.MR)[1]
-        self.cp_ch = self.cea.get_Chamber_Cp(self.Pc_bar, self.MR)
-        self.transport_ch = self.cea.get_Chamber_Transport(self.Pc_bar, self.MR)
-
-        # Pre-store throat values
-        self.gamma_th = self.cea.get_Throat_MolWt_gamma(self.Pc_bar, self.MR)[1]
-        self.transport_th = self.cea.get_Throat_Transport(self.Pc_bar, self.MR)
-
+        self.throat_index = np.argmin(self.geometry.r) # may be redundant
     
     def properties(self, A):
         area_ratio = A/self.At
@@ -86,7 +77,7 @@ class GasModel:
             Pc=self.Pc_bar,
             MR=self.MR,
             eps=area_ratio,
-            frozen=0
+            frozen=1
         )
 
         mu = mu_millipoise*1e-4 # Millipoise -> Pa-s
@@ -94,38 +85,93 @@ class GasModel:
         
         return float(gamma), float(cp), float(mu), float(Pr), float(T_static)
 
-    def mach_from_area(self, A, gamma, M_prev):
-        
-        At = self.At
-        area_ratio = A/At
+    def mach_from_area(self, A, gamma, branch): 
+        area_ratio = A/self.At
 
         # Solve area-Mach relation numerically
-        from scipy.optimize import fsolve
-
         def area_mach(M):
             return (1/M)*\
                    ((2/(gamma+1)) *
                     (1 + (gamma-1)/2*M**2))**((gamma+1)/(2*(gamma-1))) \
                    - area_ratio
 
-        # Use previous Mach as initial guess
-        M = fsolve(area_mach, M_prev)[0]
-        return M
+        if abs(area_ratio-1.0)<1e-6:
+            return 1.0
+
+        if branch == "subsonic":
+            return brentq(area_mach, 1e-6, 0.9999)
+        elif branch == "supersonic":
+            return brentq(area_mach, 1.00001, 10.0)
+        else:
+            raise ValueError("Branch must be 'subsonic' or 'supersonic'")
     
+    def viscosity_from_T(self, T, T_ref, mu_ref, exponent=0.7):
+        return mu_ref*(T/T_ref)**exponent
+    """
     def bartz_base(self, A, mu_g, cp_g, Pr_g):
-        """
-        Bartz Equation
-        Pc in Pa
-        c* in m/s
-        mu in Pa-s
-        cp in J/kg-K
-        A in m^2
-        """
-        C = 0.026
+        
+        # Full Bartz Equation
+        # Pc in Pa
+        # c* in m/s
+        # mu in Pa-s
+        # cp in J/kg-K
+        # A in m^2
+        
+
+        C = 0.026 
         Pc = self.Pc_bar*1e5 # Convert bar to Pa 
+
         c_star = self.c_star
         At = self.At
+        Dt = self.Dt
+        Rt = self.Rt
 
-        hg = C*mu_g**0.2*cp_g*Pr_g**(-0.6)*(Pc/c_star)**0.8*(At/A)**0.9
+        hg = (
+            C
+            *(mu_g**0.2)
+            *cp_g
+            *(Pr_g**(-0.6))
+            *(Pc/c_star)**0.8
+            *(Dt/Rt)**0.1
+            *(self.At/A)**0.9
+            *(Dt**(-0.2))
+        )
+        return hg
+    """
+
+    # Modern Bartz - trying something newwww
+    def bartz_base(self, A, mu_g, cp_g, Pr_g):
+
+        """
+        Modern SI Bartz using local mass flux instead of Pc/c*
+        """
+
+        C = 0.026
+
+        At = self.At
+        Dt = self.Dt
+        Rt = self.Rt
+
+        # local mass flux (kg/m^2/s)
+        G = self.mdot/A
+
+        hg = (
+            C
+            *cp_g
+            *(mu_g**0.2)
+            *(Pr_g**(-0.6))
+            *(G**0.8)
+            *(Dt/Rt)**0.1
+            *(At/A)**0.9
+        )
 
         return hg
+
+    def static_temperature(self, T0, gamma, M):
+        return T0/(1+(gamma-1)/2*M**2)
+
+    def static_pressure(self, P0, gamma, M):
+        return P0/(1+(gamma-1)/2*M**2)**(gamma/(gamma-1))
+
+    def density(self, P, T, R):
+        return P/(R*T)

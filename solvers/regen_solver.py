@@ -32,7 +32,6 @@ class RegenSolver:
     def solve(self, T_in, P_in):
 
         N = self.geom.n_nodes 
-        throat_index = self.geom.throat_index()
 
         self.T_c[0] = T_in
         self.P_c[0] = P_in
@@ -55,11 +54,16 @@ class RegenSolver:
             self.Pr_g[i] = Pr
             self.T_g[i] = T_static
 
-            # Mach marching
-            if i == 0:
-                self.M[i] = 0.05
+            # Mach marching - determine flow branch relative to throat
+            if i < self.gas.throat_index:
+                branch = "subsonic"
+            elif i == self.gas.throat_index:
+                self.M[i] = 1.0
+                continue
             else:
-                self.M[i] = self.gas.mach_from_area(A, gamma, self.M[i-1])
+                branch = "supersonic"
+
+            self.M[i] = self.gas.mach_from_area(A, gamma, branch)
 
         # PHASE 2: THERMAL MARCHING
         for i in range(N - 1):
@@ -92,48 +96,52 @@ class RegenSolver:
 
             h_c = Nu*k_c/dh # Coolant side heat transfer coeff
 
-            # ------ GAS SIDE ---------
-            # Recovery temp
-            r_factor = Pr_g**(1/3) # Recovery factor for turbulent flow (approx.)
-            T_aw = Tg*(1+r_factor*(gamma-1)/2*M**2) # Tg is static gas temp
-
-            # Base Bartz coeff
-            h_base = self.gas.bartz_base(A, mu_g, cp_g, Pr_g)
-
-            # Wall material conductivity 
-            T_wall_avg = (self.T_c[i]+T_aw)/2 # Assume average wall temp
-            k_w = self.material.thermal_conductivity(T_wall_avg)
-
-            # ------ SIGMA ITERATION -------
-            sigma = 1.0 # Initial guess, usually around 0.6-1.0
-            eps = 1e-4 # Convergence criterion
+            # ----- GAS SIDE SIGMA ITERATION -------
+            T_wg = self.T_c[i] + 50 # Initial guess
+            tol = 1e-4 # Convergence criterion
             
             for _ in range(20):
-                
+                # Reco temp
+                # Stagnation temperature
+                T0 = Tg*(1+(gamma-1)/2*M**2)
+
+                # Bartz recovery factor - added dependancy on wall temp
+                r_factor = (Pr_g**(1/3))*(T_wg/T0)**0.25
+
+                # Adiabatic wall temp
+                T_aw = T0*((1+r_factor*(gamma-1)/2*M**2)
+                        /(1+(gamma-1)/2*M**2)
+                )
+
+                # Film temp
+                #T_film = 0.5*(T_wg+T0)
+                #mu_film = self.gas.viscosity_from_T(T_film, T_ref=Tg, mu_ref=mu_g)
+
+                # Instead using Bartz reference temp
+                T_star = T0*(0.5+0.5*(T_wg/T0)+0.22*r_factor*M**2)
+                mu_star = self.gas.viscosity_from_T(T_star, T_ref=Tg, mu_ref=mu_g)
+
+                # Base bartz coeff
+                h_base = self.gas.bartz_base(A, mu_star, cp_g, Pr_g)
+
+                # Compute sigma using current wall temp
+                sigma = ((0.5*(T_wg/T0)+0.5)**(-0.68)*(1+(gamma-1)/2*M**2)**(-0.12))
+
+                # Gas side HTC
                 h_g = h_base*sigma
 
                 # Total thermal resistance (CC conv -> wall cond -> cool conv)
+                k_w = self.material.thermal_conductivity(T_wg)
                 R_total = 1/h_g + self.geom.t_wall/k_w + 1/h_c
                 
                 # Heat flux through wall
                 q = (T_aw - self.T_c[i])/R_total
 
-                T_wg = T_aw - q/h_g
-
-                sigma_new = (
-                    (0.5*(T_wg/T_aw)*(1+(gamma-1)/2*M**2)+0.5)
-                    **(-0.68)*(1+(gamma-1)/2*M**2)**(-0.12)
-                )
-
-                if abs(sigma_new-sigma)<eps:
+                T_wg_new = T_aw - q/h_g
+                if abs(T_wg_new-T_wg)<tol:
                     break
-                sigma = sigma_new
-            
-            # Final converged values
-            h_g = h_base*sigma 
-            R_total = 1/h_g + self.geom.t_wall/k_w + 1/h_c
-            q = (T_aw - self.T_c[i])/R_total
-            
+                T_wg = T_wg_new
+                    
             self.q[i] = q
             self.T_wg[i] = T_aw - q/h_g
             self.T_wl[i] = self.T_c[i] + q/h_c
