@@ -3,7 +3,7 @@ from correlations.correlations import haaland, gnielinski
 
 class RegenSolver:
 
-    def __init__(self, geometry, coolant, gas, material, flow_direction="nozzle_to_injector"):
+    def __init__(self, geometry, coolant, gas, material, flow_direction):
         
         self.geom = geometry
         self.coolant = coolant
@@ -36,19 +36,26 @@ class RegenSolver:
 
         N = self.geom.n_nodes 
 
+        # Adjust flow direction
         if self.flow_direction == "injector_to_nozzle":
             march_nodes = np.arange(N)
+        elif self.flow_direction == "nozzle_to_injector":
+            march_nodes = np.arange(N)[::-1]
         else:
+            print(f"No flow direction specified. Assuming Reveser flow: Nozzle to Injector.")
             march_nodes = np.arange(N)[::-1]
 
         if self.flow_direction == "injector_to_nozzle":
             self.T_c[0] = T_in
             self.P_c[0] = P_in
+        elif self.flow_direction == "nozzle_to_injector":
+            self.T_c[-1] = T_in
+            self.P_c[-1] = P_in
         else:
+            print(f"No flow direction specified. Assuming Reveser flow: Nozzle to Injector.")
             self.T_c[-1] = T_in
             self.P_c[-1] = P_in
         
-
         dh = self.geom.hydraulic_diameter()
         A_flow = self.geom.total_flow_area()
         

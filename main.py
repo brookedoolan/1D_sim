@@ -42,7 +42,7 @@ gas = GasModel(
 material = CuCr1Zr()
 
 # Thermal analysis
-regen_solver = RegenSolver(geom, coolant, gas, material)
+regen_solver = RegenSolver(geom, coolant, gas, material, "nozzle_to_injector")
 regen_solver.solve(T_in=298, P_in=4.5e6)
 
 # Stress analysis
