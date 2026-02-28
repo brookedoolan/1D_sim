@@ -3,7 +3,7 @@ from correlations.correlations import haaland, gnielinski
 
 class RegenSolver:
 
-    def __init__(self, geometry, coolant, gas, material):
+    def __init__(self, geometry, coolant, gas, material, flow_direction="nozzle_to_injector"):
         
         self.geom = geometry
         self.coolant = coolant
@@ -11,6 +11,9 @@ class RegenSolver:
         self.material = material 
 
         N = geometry.n_nodes
+
+        # Coolant flow direction flag
+        self.flow_direction = flow_direction
 
         # Coolant 
         self.T_c = np.zeros(N) # Coolant temp
@@ -33,8 +36,18 @@ class RegenSolver:
 
         N = self.geom.n_nodes 
 
-        self.T_c[0] = T_in
-        self.P_c[0] = P_in
+        if self.flow_direction == "injector_to_nozzle":
+            march_nodes = np.arange(N)
+        else:
+            march_nodes = np.arange(N)[::-1]
+
+        if self.flow_direction == "injector_to_nozzle":
+            self.T_c[0] = T_in
+            self.P_c[0] = P_in
+        else:
+            self.T_c[-1] = T_in
+            self.P_c[-1] = P_in
+        
 
         dh = self.geom.hydraulic_diameter()
         A_flow = self.geom.total_flow_area()
@@ -66,7 +79,9 @@ class RegenSolver:
             self.M[i] = self.gas.mach_from_area(A, gamma, branch)
 
         # PHASE 2: THERMAL MARCHING
-        for i in range(N - 1):
+        for k in range(N-1):
+            i = march_nodes[k]
+            j = march_nodes[k+1]
             
             dx = self.geom.dx[i]
             r = self.geom.r[i]
@@ -149,11 +164,11 @@ class RegenSolver:
             # ----- ENERGY UPDATE ------
             S_g = 2*np.pi*r*dx
 
-            self.T_c[i+1] = self.T_c[i] + q*S_g/(self.coolant.mdot*cp_c)
+            self.T_c[j] = self.T_c[i] + q*S_g/(self.coolant.mdot*cp_c)
 
             # Pressure drop
             dP = f*dx/dh*rho_c*u**2/2 # This assumes velocity is constant, but changes
-            self.P_c[i+1] = self.P_c[i] - dP
+            self.P_c[j] = self.P_c[i] - dP
 
         
         # Remove zeros at end (never computed)

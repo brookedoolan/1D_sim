@@ -107,7 +107,7 @@ class GasModel:
     
     def viscosity_from_T(self, T, T_ref, mu_ref, exponent=0.7):
         return mu_ref*(T/T_ref)**exponent
-    """
+    
     def bartz_base(self, A, mu_g, cp_g, Pr_g):
         
         # Full Bartz Equation
@@ -137,10 +137,10 @@ class GasModel:
             *(Dt**(-0.2))
         )
         return hg
-    """
+    
 
     # Modern Bartz - trying something newwww
-    def bartz_base(self, A, mu_g, cp_g, Pr_g):
+    def bartz_base_modern(self, A, mu_g, cp_g, Pr_g):
 
         """
         Modern SI Bartz using local mass flux instead of Pc/c*
