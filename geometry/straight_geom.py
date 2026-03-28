@@ -1,5 +1,28 @@
 import numpy as np
 
+
+def piecewise_channel(x, r, a1, a_min, a2, H1, H_min, H2):
+    """
+    RPA-style piecewise linear channel geometry.
+    Linearly interpolates injector (1) -> throat (min) -> nozzle exit (2).
+    Returns (a, H) arrays of length len(x).
+    """
+    throat_idx = np.argmin(r)
+    x_throat = x[throat_idx]
+
+    a = np.where(
+        x <= x_throat,
+        np.interp(x, [x[0], x_throat], [a1, a_min]),
+        np.interp(x, [x_throat, x[-1]], [a_min, a2])
+    )
+    H = np.where(
+        x <= x_throat,
+        np.interp(x, [x[0], x_throat], [H1, H_min]),
+        np.interp(x, [x_throat, x[-1]], [H_min, H2])
+    )
+    return a, H
+
+
 class EngineGeometry:
     """
     Combines:
@@ -7,29 +30,19 @@ class EngineGeometry:
     - Cooling channel geometry: straight, rectangular channels
     """
 
-    def __init__(self, x, r, a1, a_min, a2, H1, H_min, H2, N_channels, t_wall):
-
+    def __init__(self, x, r, a, H, N_channels, t_wall):
+        """
+        a, H can be scalars (constant channel) or arrays (varying channel).
+        """
         self.x = x
         self.r = r
         self.n_nodes = len(x)
         self.N = N_channels
         self.t_wall = t_wall
 
-        # Piecewise linear channel width and height:
-        # injector (1) -> throat (min) -> nozzle exit (2)
-        throat_idx = np.argmin(r)
-        x_throat = x[throat_idx]
-
-        self.a = np.where(
-            x <= x_throat,
-            np.interp(x, [x[0], x_throat], [a1, a_min]),
-            np.interp(x, [x_throat, x[-1]], [a_min, a2])
-        )
-        self.H = np.where(
-            x <= x_throat,
-            np.interp(x, [x[0], x_throat], [H1, H_min]),
-            np.interp(x, [x_throat, x[-1]], [H_min, H2])
-        )
+        N = len(x)
+        self.a = np.broadcast_to(np.asarray(a, dtype=float), (N,)).copy()
+        self.H = np.broadcast_to(np.asarray(H, dtype=float), (N,)).copy()
 
         # Non-uniform spacing supported
         self.dx = np.gradient(self.x)

@@ -2,26 +2,47 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-from geometry.straight_geom import EngineGeometry
+from geometry.straight_geom import EngineGeometry, piecewise_channel
 from fluid.coolant_model import CoolantModel
 from fluid.gas_model import GasModel
 from solvers.regen_solver import RegenSolver
 from materials.cucr1zr import CuCr1Zr
 from geometry.rpa_loader import load_rpa_contour
-from geometry.straight_geom import EngineGeometry
 from solvers.chamber_stress import ChamberStress
 
 BASE_DIR = Path(__file__).resolve().parent # Project root (folder containing main.py)
 contour_path = BASE_DIR / "geometry" / "rpa_contours" / "contour.txt"
 x, r = load_rpa_contour(contour_path) # Import RPA contour
 
+CHANNEL_MODE = "rpa"  # "bruv" or "rpa"
+
+if CHANNEL_MODE == "bruv":
+    # Channel width follows contour radius: a(x) = r(x) * Ltheta_chnl
+    no_web     = 40
+    Ltheta_web = 0.03       # rad, angular web width
+    th_web     = 2.0e-3     # m, channel height (radial depth)
+    th_iw      = 1.5e-3     # m, inner wall thickness
+    Ltheta_chnl = 2*np.pi/no_web - Ltheta_web
+    a_channel = r * Ltheta_chnl
+    H_channel = th_web
+
+elif CHANNEL_MODE == "rpa":
+    # Piecewise linear: injector -> throat -> exit
+    a_channel, H_channel = piecewise_channel(
+        x, r,
+        a1=2.0e-3, a_min=1.5e-3, a2=2.0e-3,
+        H1=2.0e-3, H_min=1.5e-3, H2=2.0e-3,
+    )
+    th_iw  = 1.5e-3
+    no_web = 40
+
 geom = EngineGeometry(
     x=x,
     r=r,
-    a1=1.5e-3, a_min=1.5e-3, a2=1.5e-3,   # channel width: injector -> throat -> exit
-    H1=1.5e-3, H_min=1.5e-3, H2=1.5e-3,   # channel height: injector -> throat -> exit
-    N_channels=40,
-    t_wall=1.5e-3
+    a=a_channel,
+    H=H_channel,
+    N_channels=no_web,
+    t_wall=th_iw
 )
 
 coolant = CoolantModel(
