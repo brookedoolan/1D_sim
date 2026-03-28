@@ -9,7 +9,7 @@ class ChamberStress:
         self.Pc = Pc_bar*1e5
 
     def compute(self, solver):
-        
+
         N = len(solver.T_c)
 
         sigma_t = np.zeros(N)
@@ -18,10 +18,10 @@ class ChamberStress:
         sigma_vm = np.zeros(N)
         safety = np.zeros(N)
 
-        w = self.geom.a
         tw = self.geom.t_wall
 
         for i in range(N):
+            w = self.geom.a[i]
             T_wg = solver.T_wg[i]
             T_wl = solver.T_wl[i]
             q = solver.q[i]
@@ -32,24 +32,26 @@ class ChamberStress:
             E = self.mat.youngs_modulus(T_wg)*1e9 # GPa -> Pa
             k = self.mat.thermal_conductivity(T_wg)
             nu = self.mat.poisson_ratio()
-            a = self.mat.thermal_expansion() 
+            a = self.mat.thermal_expansion()
             sy = self.mat.yield_strength(T_wg)*1e6 # MPa -> Pa
 
             # Stresses
             # pressure hoop
             sigma_t[i] = ((Pco - Pc)/2)*(w/tw)**2
 
-            # thermal tangential
-            sigma_t_th[i] = E*a*q*tw/(2*(1-nu)*k)
+            # thermal tangential (-ve at gas-side????)
+            sigma_t_th[i] = -E*a*q*tw/(2*(1-nu)*k)
 
-            # longitudinal
-            sigma_l[i] = E*a*(T_wg - T_wl)
+            # old longitudinal (also compressive -ve at gas-side hot surf???):
+            sigma_l[i] = -E*a*(T_wg-T_wl)
+            # longitudinal (same thin-wall thermal gradient formula as sigma_t_th)
+            #sigma_l[i] = -E*a*(T_wg - T_wl)/(2*(1-nu))
 
-            # von mises
+            # von mises (biaxial plane stress: hoop and longitudinal)
+            # sigma_t and sigma_t_th both act in the tangential direction
+            sigma_hoop = sigma_t[i] + sigma_t_th[i]
             sigma_vm[i] = np.sqrt(
-                sigma_t[i]**2 +
-                sigma_t_th[i]**2 +
-                sigma_l[i]**2
+                sigma_hoop**2 - sigma_hoop*sigma_l[i] + sigma_l[i]**2
             )
 
             safety[i] = sy / sigma_vm[i]

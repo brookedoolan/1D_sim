@@ -31,6 +31,14 @@ class GasModel:
             thermal_cond_units='W/cm-degC' # Need to convert to W/m-K, 1 W/cm-K = 100 W/m-K
         )
 
+        # Chamber stagnation temp
+        self.T0 = self.cea.get_Temperatures(
+            Pc=self.Pc_bar,
+            MR=self.MR,
+            eps=1.0,
+            frozen=0
+        )[0]
+
         # Either provided by RPA or computed from CEA
         if cstar is None:
             self.c_star = self.cea.get_Cstar(Pc=self.Pc_bar, MR=self.MR)
@@ -63,7 +71,7 @@ class GasModel:
             eps=area_ratio,
             frozen=0
         )[2]
-
+        
         # Heat capacity
         cp = self.cea.get_HeatCapacities(
             Pc=self.Pc_bar,
@@ -82,7 +90,7 @@ class GasModel:
 
         mu = mu_millipoise*1e-4 # Millipoise -> Pa-s
         k = k_cm*100 # W/cm-K -> W/m-K
-        
+
         return float(gamma), float(cp), float(mu), float(Pr), float(T_static)
 
     def mach_from_area(self, A, gamma, branch): 
@@ -139,11 +147,11 @@ class GasModel:
         return hg
     
 
-    # Modern Bartz - trying something newwww
+    # New/alternate Bartz - trying something newwww
     def bartz_base_modern(self, A, mu_g, cp_g, Pr_g):
 
         """
-        Modern SI Bartz using local mass flux instead of Pc/c*
+        Alternate SI Bartz using local mass flux instead of Pc/c*
         """
 
         C = 0.026

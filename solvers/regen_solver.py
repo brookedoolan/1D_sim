@@ -15,9 +15,11 @@ class RegenSolver:
         # Coolant flow direction flag
         self.flow_direction = flow_direction
 
-        # Coolant 
+        # Coolant
         self.T_c = np.zeros(N) # Coolant temp
         self.P_c = np.zeros(N) # Coolant pressure
+        self.rho_c = np.zeros(N) # Coolant density
+        self.u_c = np.zeros(N) # Coolant velocity
 
         # Gas/Flow
         self.M = np.zeros(N) # Mach number
@@ -32,6 +34,8 @@ class RegenSolver:
         self.T_wg = np.zeros(N) # Gas side wall temp
         self.T_wl = np.zeros(N) # Coolant side wall temp
 
+
+        
     def solve(self, T_in, P_in):
 
         N = self.geom.n_nodes 
@@ -56,9 +60,11 @@ class RegenSolver:
             self.T_c[-1] = T_in
             self.P_c[-1] = P_in
         
-        dh = self.geom.hydraulic_diameter()
-        A_flow = self.geom.total_flow_area()
-        
+        dh = self.geom.hydraulic_diameter()      # array, indexed per node
+        A_flow = self.geom.total_flow_area()     # array, indexed per node
+
+        mdot = self.coolant.mdot
+
         # PHASE 1: PRECOMPUTE GAS AND FLOW
         for i in range(N):
 
@@ -107,16 +113,18 @@ class RegenSolver:
                 self.T_c[i], self.P_c[i]
             )
 
-            G = self.coolant.mdot/A_flow # Mass flux
+            G = mdot/A_flow[i] # Mass flux
             u = G/rho_c # Velocity
+            self.rho_c[i] = rho_c
+            self.u_c[i] = u
 
-            Re = G*dh/mu_c # Reynolds
+            Re = G*dh[i]/mu_c # Reynolds
             Pr_c = cp_c*mu_c/k_c # Prandtl
 
-            f = haaland(Re, dh, eps=1e-5)
+            f = haaland(Re, dh[i], eps=1e-5)
             Nu = gnielinski(Re, Pr_c, f)
 
-            h_c = Nu*k_c/dh # Coolant side heat transfer coeff
+            h_c = Nu*k_c/dh[i] # Coolant side heat transfer coeff
 
             # ----- GAS SIDE SIGMA ITERATION -------
             T_wg = self.T_c[i] + 50 # Initial guess
@@ -127,8 +135,10 @@ class RegenSolver:
                 # Stagnation temperature
                 T0 = Tg*(1+(gamma-1)/2*M**2)
 
+                # Bartz recovery factor (classical turbulent reco)
+                r_factor = (Pr_g)**(1/3)
                 # Bartz recovery factor - added dependancy on wall temp
-                r_factor = (Pr_g**(1/3))*(T_wg/T0)**0.25
+                #r_factor = (Pr_g**(1/3))*(T_wg/T0)**0.25
 
                 # Adiabatic wall temp
                 T_aw = T0*((1+r_factor*(gamma-1)/2*M**2)
@@ -160,6 +170,7 @@ class RegenSolver:
                 q = (T_aw - self.T_c[i])/R_total
 
                 T_wg_new = T_aw - q/h_g
+
                 if abs(T_wg_new-T_wg)<tol:
                     break
                 T_wg = T_wg_new
@@ -171,15 +182,25 @@ class RegenSolver:
             # ----- ENERGY UPDATE ------
             S_g = 2*np.pi*r*dx
 
-            self.T_c[j] = self.T_c[i] + q*S_g/(self.coolant.mdot*cp_c)
+            self.T_c[j] = self.T_c[i] + q*S_g/(mdot*cp_c)
 
             # Pressure drop
-            dP = f*dx/dh*rho_c*u**2/2 # This assumes velocity is constant, but changes
+            dP = f*dx/dh[i]*rho_c*u**2/2 # This assumes velocity is constant, but changes
             self.P_c[j] = self.P_c[i] - dP
 
         
-        # Remove zeros at end (never computed)
-        self.M[-1] = self.M[-2]
-        self.T_wg[-1] = self.T_wg[-2]
-        self.q[-1] = self.q[-2]
-        self.T_wl[-1] = self.T_wl[-2]
+        # Fill boundary node never reached by thermal march
+        if self.flow_direction == "nozzle_to_injector":
+            self.M[0] = self.M[1]
+            self.T_wg[0] = self.T_wg[1]
+            self.q[0] = self.q[1]
+            self.T_wl[0] = self.T_wl[1]
+            self.rho_c[0] = self.rho_c[1]
+            self.u_c[0] = self.u_c[1]
+        else:
+            self.M[-1] = self.M[-2]
+            self.T_wg[-1] = self.T_wg[-2]
+            self.q[-1] = self.q[-2]
+            self.T_wl[-1] = self.T_wl[-2]
+            self.rho_c[-1] = self.rho_c[-2]
+            self.u_c[-1] = self.u_c[-2]

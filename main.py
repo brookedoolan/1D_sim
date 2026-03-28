@@ -18,14 +18,14 @@ x, r = load_rpa_contour(contour_path) # Import RPA contour
 geom = EngineGeometry(
     x=x,
     r=r,
-    a=1.5e-3,
-    H=1.5e-3,
+    a1=1.5e-3, a_min=1.5e-3, a2=1.5e-3,   # channel width: injector -> throat -> exit
+    H1=1.5e-3, H_min=1.5e-3, H2=1.5e-3,   # channel height: injector -> throat -> exit
     N_channels=40,
     t_wall=1.5e-3
 )
 
 coolant = CoolantModel(
-    mdot=1.0,
+    mdot=0.9269, # computing mdot = N*rho*V*A_channel from RPA
     fluid_name="Ethanol"  # CoolProp fluid string
 )
 
@@ -83,9 +83,10 @@ axM2.plot(x, r, color="tab:red")
 axM2.set_ylabel("Radius (m)", color="tab:red")
 axM2.tick_params(axis='y', labelcolor='tab:red')
 
-# Gas wall temp & radius
+# Gas & coolant wall temp & radius
 axTw = axs[1, 0]
 axTw.plot(x, regen_solver.T_wg, color="tab:orange")
+axTw.plot(x, regen_solver.T_wl, color="tab:blue")
 axTw.set_xlabel("Axial position (m)")
 axTw.set_ylabel("Wall Temp (K)", color="tab:orange")
 axTw.set_title("Gas-side Wall Temperature")
@@ -109,11 +110,22 @@ axq2.plot(x, r, color="tab:red")
 axq2.set_ylabel("Radius (m)", color="tab:red")
 axq2.tick_params(axis='y', labelcolor='tab:red')
 
-# EMPTY PANEL for future
-axs[1, 2].axis("off")
+# Coolant velocity & density
+axV = axs[1, 2]
+axV.plot(x, regen_solver.u_c, color="tab:blue")
+axV.set_xlabel("Axial position (m)")
+axV.set_ylabel("Velocity (m/s)", color="tab:blue")
+axV.tick_params(axis='y', labelcolor='tab:blue')
+axV.set_title("Coolant Velocity & Density")
+axV.grid(True)
+
+axRho = axV.twinx()
+axRho.plot(x, regen_solver.rho_c, color="tab:orange")
+axRho.set_ylabel("Density (kg/m³)", color="tab:orange")
+axRho.tick_params(axis='y', labelcolor='tab:orange')
 
 # ----------- STRESS PLOTS ----------------------
-# Stress summary: longitudinal, von mises, pressure tangential, thermal tangential 
+# Stress summary: longitudinal, von mises, pressure tangential, thermal tangential
 axs[2,0].plot(x, sigma_vm/1e6, label="Von Mises")
 axs[2,0].plot(x, sigma_l/1e6, label="Longitudinal")
 axs[2,0].plot(x, sigma_t/1e6, label="Pressure Tangential")
@@ -141,11 +153,20 @@ ax2 = ax.twinx()
 ax2.plot(x, safety, "k-.", label="Safety Factor")
 ax2.set_ylabel("Safety Factor")
 
-axs[2,2].axis("off")  # spare
+# Channel geometry
+axCh = axs[2, 2]
+axCh.plot(x, geom.a*1e3, color="tab:blue", label="Width (a)")
+axCh.plot(x, geom.H*1e3, color="tab:orange", label="Height (H)")
+axCh.set_xlabel("Axial position (m)")
+axCh.set_ylabel("Channel dimension (mm)")
+axCh.set_title("Cooling Channel Geometry")
+axCh.legend()
+axCh.grid(True)
 
 plt.tight_layout()
 plt.show()
 
+"""
 # -------- MATERIAL PROPERTY CURVES --------
 T = np.linspace(250,800,300)
 
@@ -172,3 +193,4 @@ ax1.legend(lines+lines2,labels+labels2,loc="upper right")
 plt.title("CuCr1Zr Material Properties vs Temperature")
 plt.tight_layout()
 plt.show()
+"""
