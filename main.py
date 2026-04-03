@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 from pathlib import Path
 
@@ -12,16 +13,16 @@ from solvers.chamber_stress import ChamberStress
 
 BASE_DIR = Path(__file__).resolve().parent # Project root (folder containing main.py)
 contour_path = BASE_DIR / "geometry" / "rpa_contours" / "contour.txt"
-x, r = load_rpa_contour(contour_path, n_points=500) # Import RPA contour (n_points controls resolution)
+x, r = load_rpa_contour(contour_path, n_points=300) # Import RPA contour (n_points controls resolution)
 
 CHANNEL_MODE = "rpa"  # "bruv" or "rpa"
 
 if CHANNEL_MODE == "bruv":
     # Channel width follows contour radius: a(x) = r(x) * Ltheta_chnl
-    no_web     = 40
+    no_web = 40
     Ltheta_web = 0.03       # rad, angular web width
-    th_web     = 2.0e-3     # m, channel height (radial depth)
-    th_iw      = 1.5e-3     # m, inner wall thickness
+    th_web = 2.0e-3     # m, channel height (radial depth)
+    th_iw = 1.5e-3     # m, inner wall thickness
     Ltheta_chnl = 2*np.pi/no_web - Ltheta_web
     a_channel = r * Ltheta_chnl
     H_channel = th_web
@@ -55,7 +56,8 @@ gas = GasModel(
     ox_name = 'LOX',
     fuel_name = 'Ethanol', # RocketCEA does NOT have IPA
     mdot = 2.04543,
-    cstar = 1684.44
+    cstar = 1684.44,
+    emissivity = 0.14  # effective grey-gas emissivity for CO2/H2O combustion products (~0.13-0.15)
 )
 
 material = CuCr1Zr()
@@ -71,8 +73,20 @@ sigma_vm, sigma_t, sigma_t_th, sigma_t_global, sigma_l, safety = stress_model.co
 x = geom.x
 r = geom.r
 
+# ----------- EXPORT DATA -------------
+df = pd.DataFrame({
+    "x_m": x,
+    "heat_flux_W_m2": regen_solver.q,
+    "heat_flux_conv_W_m2": regen_solver.q - regen_solver.q_rad,
+    "heat_flux_rad_W_m2": regen_solver.q_rad,
+    "T_wg_K": regen_solver.T_wg,
+    "T_wl_K": regen_solver.T_wl,
+    "T_c_K": regen_solver.T_c
+})
+df.to_csv(BASE_DIR / "results" / "solver_outputs.csv", index=False)
+
 # ------------ THERMAL PLOTS -----------------------
-fig, axs = plt.subplots(3, 3, figsize=(18, 13))
+fig, axs = plt.subplots(3, 3, figsize=(20, 16))
 
 # Coolant Temp
 axs[0, 0].plot(x, regen_solver.T_c, label="Coolant T", color="tab:blue")
@@ -118,10 +132,13 @@ axTw2.tick_params(axis='y', labelcolor='tab:red')
 
 # Heat flux & radius
 axq = axs[1, 1]
-axq.plot(x, regen_solver.q/1e6, color="tab:purple")
+axq.plot(x, regen_solver.q/1e6, color="tab:purple", label="Total")
+axq.plot(x, (regen_solver.q - regen_solver.q_rad)/1e6, color="tab:blue", linestyle="--", label="Convective")
+axq.plot(x, regen_solver.q_rad/1e6, color="tab:orange", linestyle="--", label="Radiative")
 axq.set_xlabel("Axial position (m)")
-axq.set_ylabel("Heat Flux (MW/m²)", color="tab:purple")
+axq.set_ylabel("Heat Flux (MW/m²)")
 axq.set_title("Heat Flux")
+axq.legend(fontsize=8)
 axq.grid(True)
 
 axq2 = axq.twinx()
@@ -184,7 +201,7 @@ axCh.set_title("Cooling Channel Geometry")
 axCh.legend()
 axCh.grid(True)
 
-plt.tight_layout()
+plt.tight_layout(pad=3.0)
 plt.show()
 
 """

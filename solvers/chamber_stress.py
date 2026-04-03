@@ -51,7 +51,7 @@ class ChamberStress:
             sigma_t_global[i] = Pc * r / t_total
 
             # Longitudinal — thin-wall thermal gradient, biaxially constrained
-            sigma_l[i] = E*aval*(T_wg - T_wl)/(2*(1-nu))
+            sigma_l[i] = E*aval*(T_wg - T_wl)
 
             # Von Mises (biaxial plane stress)
             # All three tangential terms act in same direction

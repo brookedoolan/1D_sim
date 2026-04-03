@@ -30,9 +30,10 @@ class RegenSolver:
         self.cp_g = np.zeros(N) # Specific heat (CC gas)
 
         # Thermal
-        self.q = np.zeros(N) # Heat flux
-        self.T_wg = np.zeros(N) # Gas side wall temp
-        self.T_wl = np.zeros(N) # Coolant side wall temp
+        self.q = np.zeros(N)     # Total heat flux (conv + rad)
+        self.q_rad = np.zeros(N) # Radiative component
+        self.T_wg = np.zeros(N)  # Gas side wall temp
+        self.T_wl = np.zeros(N)  # Coolant side wall temp
 
 
     def solve(self, T_in, P_in):
@@ -135,7 +136,8 @@ class RegenSolver:
             for _ in range(20):
 
                 # Sieder-Tate wall viscosity correction on Gnielinski
-                mu_w = self.coolant.properties(T_wl, self.P_c[i])[1]
+                T_wl_safe = max(T_wl, self.T_c[i])  # guard against unphysical values during iteration
+                mu_w = self.coolant.properties(T_wl_safe, self.P_c[i])[1]
                 Nu = gnielinski(Re, Pr_c, f) * (mu_c / mu_w) ** 0.11
                 h_c = Nu*k_c/dh[i]
 
@@ -169,22 +171,30 @@ class RegenSolver:
 
                 k_w = self.material.thermal_conductivity(T_wg)
 
-                # Total thermal resistance (CC conv -> inner wall cond -> cool conv)
-                # Web/side walls assumed negligible heat transfer (small temp gradient)
-                R_total = 1/h_g + self.geom.t_wall/k_w + 1/h_c
+                # Radiative heat flux — grey gas: q_rad = ε·σ·(T_g⁴ - T_wg⁴)
+                SIGMA_SB = 5.67e-8  # W/m²/K⁴
+                q_rad = self.gas.emissivity * SIGMA_SB * (Tg**4 - T_wg**4)
 
-                # Heat flux through wall
-                q = (T_aw - self.T_c[i])/R_total
+                # Convective heat flux from gas side
+                q_conv = h_g * (T_aw - T_wg)
 
-                T_wg_new = T_aw - q/h_g
-                T_wl = self.T_c[i] + q/h_c  # update coolant-side wall temp for next iteration
+                # Total heat into wall
+                q = q_conv + q_rad
+
+                # Wall + coolant resistance (coolant side only — radiation enters at gas-wall surface)
+                R_rest = self.geom.t_wall/k_w + 1/h_c
+
+                # T_wg from coolant-side balance: q = (T_wg - T_c) / R_rest
+                T_wg_new = self.T_c[i] + q * R_rest
+                T_wl = self.T_c[i] + q/h_c
 
                 if abs(T_wg_new-T_wg)<tol:
                     break
                 T_wg = T_wg_new
 
             self.q[i] = q
-            self.T_wg[i] = T_aw - q/h_g
+            self.q_rad[i] = q_rad
+            self.T_wg[i] = T_wg
             self.T_wl[i] = self.T_c[i] + q/h_c
 
             # ----- ENERGY UPDATE ------
@@ -204,6 +214,7 @@ class RegenSolver:
             self.M[0] = self.M[1]
             self.T_wg[0] = self.T_wg[1]
             self.q[0] = self.q[1]
+            self.q_rad[0] = self.q_rad[1]
             self.T_wl[0] = self.T_wl[1]
             self.rho_c[0] = self.rho_c[1]
             self.u_c[0] = self.u_c[1]
@@ -211,6 +222,7 @@ class RegenSolver:
             self.M[-1] = self.M[-2]
             self.T_wg[-1] = self.T_wg[-2]
             self.q[-1] = self.q[-2]
+            self.q_rad[-1] = self.q_rad[-2]
             self.T_wl[-1] = self.T_wl[-2]
             self.rho_c[-1] = self.rho_c[-2]
             self.u_c[-1] = self.u_c[-2]

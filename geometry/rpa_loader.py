@@ -36,6 +36,11 @@ def load_rpa_contour(filepath, n_points=None):
     x = np.array(x_vals)
     r = np.array(r_vals)
 
+    # Remove duplicate x points (e.g. RPA repeats the chamber/converging junction)
+    #mask = np.concatenate(([True], np.diff(x) > 1e-9))
+    #x = x[mask]
+    #r = r[mask]
+
     if n_points is not None:
         x_fine = np.linspace(x[0], x[-1], n_points)
         r_fine = np.interp(x_fine, x, r)

@@ -6,10 +6,11 @@ from scipy.optimize import brentq, fsolve
 
 class GasModel:
     
-    def __init__(self, Pc_bar, MR, geometry, ox_name, fuel_name, mdot=None, cstar=None):
+    def __init__(self, Pc_bar, MR, geometry, ox_name, fuel_name, mdot=None, cstar=None, emissivity=0.14):
         
         self.Pc_bar = Pc_bar
         self.MR = MR
+        self.emissivity = emissivity
 
         self.geometry = geometry
         self.At = geometry.throat_area()
