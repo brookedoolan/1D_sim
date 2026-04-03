@@ -1,9 +1,13 @@
 import numpy as np
 
-def load_rpa_contour(filepath):
+def load_rpa_contour(filepath, n_points=None):
     """
     Load RPA contour text file.
-    Returns axial position x (m), radius r (m)
+    Returns axial position x (m), radius r (m).
+
+    n_points: if provided, interpolate onto a uniform grid of this many points.
+              e.g. n_points=500 gives dx ~ 0.6 mm for a 291 mm engine.
+              Default (None) uses the raw RPA points (~177 points, dx ~ 1.65 mm).
     """
 
     x_vals = []
@@ -28,8 +32,13 @@ def load_rpa_contour(filepath):
 
                 except ValueError:
                     continue
-            
+
     x = np.array(x_vals)
     r = np.array(r_vals)
+
+    if n_points is not None:
+        x_fine = np.linspace(x[0], x[-1], n_points)
+        r_fine = np.interp(x_fine, x, r)
+        return x_fine, r_fine
 
     return x, r

@@ -30,15 +30,18 @@ class EngineGeometry:
     - Cooling channel geometry: straight, rectangular channels
     """
 
-    def __init__(self, x, r, a, H, N_channels, t_wall):
+    def __init__(self, x, r, a, H, N_channels, t_wall, roughness=1e-5):
         """
         a, H can be scalars (constant channel) or arrays (varying channel).
+        roughness: absolute wall roughness in metres (default 10 µm).
+                   e.g. 5e-6 (5 µm) for machined, 50e-6 (50 µm) for rough/printed.
         """
         self.x = x
         self.r = r
         self.n_nodes = len(x)
         self.N = N_channels
         self.t_wall = t_wall
+        self.roughness = roughness
 
         N = len(x)
         self.a = np.broadcast_to(np.asarray(a, dtype=float), (N,)).copy()

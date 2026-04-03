@@ -123,7 +123,7 @@ class RegenSolver:
             Re = G*dh[i]/mu_c # Reynolds
             Pr_c = cp_c*mu_c/k_c # Prandtl
 
-            f = haaland(Re, dh[i], eps=1e-5)
+            f = haaland(Re, dh[i], eps=self.geom.roughness)
 
             # ----- GAS SIDE SIGMA ITERATION -------
             T_wg = self.T_c[i] + 50 # Initial guess
@@ -153,15 +153,16 @@ class RegenSolver:
                 #T_film = 0.5*(T_wg+T0)
                 #mu_film = self.gas.viscosity_from_T(T_film, T_ref=Tg, mu_ref=mu_g)
 
-                # Instead using Bartz reference temp
-                T_star = T0*(0.5+0.5*(T_wg/T0)+0.22*r_factor*M**2)
+                # Eckert reference temperature: T* = 0.5*(T_wg + T_static) + 0.22*(T_aw - T_static)
+                # Tg is T_static here; previous form incorrectly used T0 instead of T_static
+                T_star = 0.5*T_wg + Tg*(0.5 + 0.22*r_factor*(gamma-1)/2*M**2)
                 mu_star = self.gas.viscosity_from_T(T_star, T_ref=Tg, mu_ref=mu_g)
 
                 # Base bartz coeff
                 h_base = self.gas.bartz_base(A, mu_star, cp_g, Pr_g)
 
-                # Compute sigma using current wall temp
-                sigma = ((0.5*(T_wg/T0)+0.5)**(-0.68)*(1+(gamma-1)/2*M**2)**(-0.12))
+                # Bartz sigma — correct form includes Mach correction on T_wg/T0 term
+                sigma = ((0.5*(T_wg/T0)*(1+(gamma-1)/2*M**2)+0.5)**(-0.68)*(1+(gamma-1)/2*M**2)**(-0.12))
 
                 # Gas side HTC
                 h_g = h_base * sigma
@@ -187,9 +188,9 @@ class RegenSolver:
             self.T_wl[i] = self.T_c[i] + q/h_c
 
             # ----- ENERGY UPDATE ------
-            #S_g = 2*np.pi*r*dx
+            S_g = 2*np.pi*r*dx
             # changed so only accounts for area of channel interfacing with chamber wall (i.e. not full channel)
-            S_g = self.geom.N * self.geom.a[i] * dx
+            #S_g = self.geom.N * self.geom.a[i] * dx
 
             self.T_c[j] = self.T_c[i] + q*S_g/(mdot*cp_c)
 

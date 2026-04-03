@@ -12,7 +12,7 @@ from solvers.chamber_stress import ChamberStress
 
 BASE_DIR = Path(__file__).resolve().parent # Project root (folder containing main.py)
 contour_path = BASE_DIR / "geometry" / "rpa_contours" / "contour.txt"
-x, r = load_rpa_contour(contour_path) # Import RPA contour
+x, r = load_rpa_contour(contour_path, n_points=500) # Import RPA contour (n_points controls resolution)
 
 CHANNEL_MODE = "rpa"  # "bruv" or "rpa"
 
@@ -39,11 +39,12 @@ geom = EngineGeometry(
     a=a_channel,
     H=H_channel,
     N_channels=no_web,
-    t_wall=th_iw
+    t_wall=th_iw,
+    roughness=0  # m, absolute wall roughness (30 µm default)
 )
 
 coolant = CoolantModel(
-    mdot=0.9269, # computing mdot = N*rho*V*A_channel from RPA
+    mdot=0.8182, # computing mdot = N*rho*V*A_channel from RPA
     fluid_name="Ethanol"  # CoolProp fluid string
 )
 
@@ -65,7 +66,7 @@ regen_solver.solve(T_in=298, P_in=4.5e6)
 
 # Stress analysis
 stress_model = ChamberStress(geom, material, Pc_bar=30)
-sigma_vm, sigma_t, sigma_t_th, sigma_l, safety = stress_model.compute(regen_solver)
+sigma_vm, sigma_t, sigma_t_th, sigma_t_global, sigma_l, safety = stress_model.compute(regen_solver)
 
 x = geom.x
 r = geom.r
@@ -146,8 +147,9 @@ axRho.tick_params(axis='y', labelcolor='tab:orange')
 # Stress summary: longitudinal, von mises, pressure tangential, thermal tangential
 axs[2,0].plot(x, sigma_vm/1e6, label="Von Mises")
 axs[2,0].plot(x, sigma_l/1e6, label="Longitudinal")
-axs[2,0].plot(x, sigma_t/1e6, label="Pressure Tangential")
+axs[2,0].plot(x, sigma_t/1e6, label="Local Pressure Hoop")
 axs[2,0].plot(x, sigma_t_th/1e6, label="Thermal Tangential")
+axs[2,0].plot(x, sigma_t_global/1e6, label="Global Hoop")
 axs[2,0].set_title("Stress Components")
 axs[2,0].set_ylabel("MPa")
 axs[2,0].legend()

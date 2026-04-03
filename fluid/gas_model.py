@@ -70,15 +70,10 @@ class GasModel:
             frozen=0
         )
 
-        # Heat capacity
-        cp = self.cea.get_HeatCapacities(
-            Pc=self.Pc_bar,
-            MR=self.MR,
-            eps=eps,
-            frozen=0
-        )[2]
-
-        # Transport properties
+        # Transport properties — frozen (appropriate for thin boundary layer in Bartz)
+        # cp_tr is frozen specific heat, consistent with frozen mu and Pr
+        # Previously used equilibrium cp from get_HeatCapacities (frozen=0) which
+        # overestimates cp by 2-3x at high T due to dissociation chemistry
         cp_tr, mu_millipoise, k_cm, Pr = self.cea.get_Exit_Transport(
             Pc=self.Pc_bar,
             MR=self.MR,
@@ -86,6 +81,7 @@ class GasModel:
             frozen=1
         )
 
+        cp = cp_tr  # J/kg-K, frozen
         mu = mu_millipoise*1e-4 # Millipoise -> Pa-s
         k = k_cm*100 # W/cm-K -> W/m-K
 
