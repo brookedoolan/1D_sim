@@ -47,21 +47,28 @@ class EngineGeometry:
         # Non-uniform spacing supported
         self.dx = np.gradient(self.x)
 
+    def web_width(self):
+        """Web (rib) width b(x) = circumferential pitch minus channel width. Varies with radius."""
+        return 2*np.pi*self.r / self.N - self.a
+
+    def gas_side_area_per_dx(self):
+        return self.N*self.a # m2/m - multiply by dx in solver
+
     def hydraulic_diameter(self):
         return 2*self.a*self.H/(self.a+self.H)
-    
+
     def total_flow_area(self):
         return self.N*self.a*self.H
-    
+
     def throat_index(self):
         return np.argmin(self.r)
-    
+
     def area(self):
         return np.pi*self.r**2
-    
+
     def throat_area(self):
         return np.min(self.area())
-    
+
     def throat_radius_of_curvature(self, window=10):
         """
         Computes throat radius of curvature Rt from contour.

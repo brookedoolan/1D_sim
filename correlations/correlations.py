@@ -7,6 +7,5 @@ def haaland(Re, dh, eps):
 
 
 def gnielinski(Re, Pr, f):
-    Nu = ((f/8)*(Re - 1000)*Pr) / \
-         (1 + 12.7*np.sqrt(f/8)*(Pr**(2/3) - 1))
+    Nu = ((f/8)*(Re - 1000)*Pr)/(1 + 12.7*np.sqrt(f/8)*(Pr**(2/3) - 1))
     return Nu

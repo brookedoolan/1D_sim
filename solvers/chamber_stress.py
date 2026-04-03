@@ -32,7 +32,7 @@ class ChamberStress:
             E = self.mat.youngs_modulus(T_wg)*1e9 # GPa -> Pa
             k = self.mat.thermal_conductivity(T_wg)
             nu = self.mat.poisson_ratio()
-            a = self.mat.thermal_expansion()
+            aval = self.mat.thermal_expansion()
             sy = self.mat.yield_strength(T_wg)*1e6 # MPa -> Pa
 
             # Stresses
@@ -40,12 +40,13 @@ class ChamberStress:
             sigma_t[i] = ((Pco - Pc)/2)*(w/tw)**2
 
             # thermal tangential (-ve at gas-side????)
-            sigma_t_th[i] = -E*a*q*tw/(2*(1-nu)*k)
+            sigma_t_th[i] = E*aval*q*tw/(2*(1-nu)*k)
 
-            # old longitudinal (also compressive -ve at gas-side hot surf???):
-            sigma_l[i] = -E*a*(T_wg-T_wl)
-            # longitudinal (same thin-wall thermal gradient formula as sigma_t_th)
-            #sigma_l[i] = -E*a*(T_wg - T_wl)/(2*(1-nu))
+            # longitudinal stress - original
+            sigma_l[i] = E*aval*(T_wg - T_wl)
+
+            # longitudinal — thin-wall thermal gradient, compressive at gas-side
+            #sigma_l[i] = E*aval*(T_wg - T_wl)/(2*(1-nu))
 
             # von mises (biaxial plane stress: hoop and longitudinal)
             # sigma_t and sigma_t_th both act in the tangential direction

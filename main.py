@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-from geometry.straight_geom import EngineGeometry, piecewise_channel
+from geometry.straight_geom import EngineGeometry
 from fluid.coolant_model import CoolantModel
 from fluid.gas_model import GasModel
 from solvers.regen_solver import RegenSolver
@@ -27,12 +27,9 @@ if CHANNEL_MODE == "bruv":
     H_channel = th_web
 
 elif CHANNEL_MODE == "rpa":
-    # Piecewise linear: injector -> throat -> exit
-    a_channel, H_channel = piecewise_channel(
-        x, r,
-        a1=2.0e-3, a_min=1.5e-3, a2=2.0e-3,
-        H1=2.0e-3, H_min=1.5e-3, H2=2.0e-3,
-    )
+    # Fixed channel width and height — web width b(x) varies naturally with contour radius
+    a_channel = 1.5e-3   # m, channel width (fixed)
+    H_channel = 1.5e-3   # m, channel height (fixed)
     th_iw  = 1.5e-3
     no_web = 40
 
@@ -51,7 +48,7 @@ coolant = CoolantModel(
 )
 
 gas = GasModel(
-    Pc_bar = 35,
+    Pc_bar = 30,
     MR = 1.5,
     geometry = geom,
     ox_name = 'LOX',
@@ -67,7 +64,7 @@ regen_solver = RegenSolver(geom, coolant, gas, material, "nozzle_to_injector")
 regen_solver.solve(T_in=298, P_in=4.5e6)
 
 # Stress analysis
-stress_model = ChamberStress(geom, material, Pc_bar=35)
+stress_model = ChamberStress(geom, material, Pc_bar=30)
 sigma_vm, sigma_t, sigma_t_th, sigma_l, safety = stress_model.compute(regen_solver)
 
 x = geom.x
@@ -178,6 +175,7 @@ ax2.set_ylabel("Safety Factor")
 axCh = axs[2, 2]
 axCh.plot(x, geom.a*1e3, color="tab:blue", label="Width (a)")
 axCh.plot(x, geom.H*1e3, color="tab:orange", label="Height (H)")
+axCh.plot(x, geom.web_width()*1e3, color="tab:green", label="Web width (b)")
 axCh.set_xlabel("Axial position (m)")
 axCh.set_ylabel("Channel dimension (mm)")
 axCh.set_title("Cooling Channel Geometry")

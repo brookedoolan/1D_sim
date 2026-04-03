@@ -56,42 +56,42 @@ class GasModel:
     def properties(self, A):
         area_ratio = A/self.At
 
+        # Clamp to nozzle range: CEA eps is a nozzle expansion ratio (>=1).
+        # Chamber nodes have A/At > 1 on the subsonic side, which CEA would
+        # misinterpret as a supersonic expansion. Use throat (eps=1) properties
+        # for those nodes — transport properties are nearly constant anyway.
+        eps = max(1.0, area_ratio)
+
         # Gamma
         mw, gamma = self.cea.get_exit_MolWt_gamma(
             Pc=self.Pc_bar,
             MR=self.MR,
-            eps=area_ratio,
+            eps=eps,
             frozen=0
         )
 
-        # Static temperature
-        T_static = self.cea.get_Temperatures(
-            Pc=self.Pc_bar,
-            MR=self.MR,
-            eps=area_ratio,
-            frozen=0
-        )[2]
-        
         # Heat capacity
         cp = self.cea.get_HeatCapacities(
             Pc=self.Pc_bar,
             MR=self.MR,
-            eps=area_ratio,
+            eps=eps,
             frozen=0
-        )[2] # Index 2 for EXIT (but essentially where area_ratio is)
+        )[2]
 
         # Transport properties
         cp_tr, mu_millipoise, k_cm, Pr = self.cea.get_Exit_Transport(
             Pc=self.Pc_bar,
             MR=self.MR,
-            eps=area_ratio,
+            eps=eps,
             frozen=1
         )
 
         mu = mu_millipoise*1e-4 # Millipoise -> Pa-s
         k = k_cm*100 # W/cm-K -> W/m-K
 
-        return float(gamma), float(cp), float(mu), float(Pr), float(T_static)
+        # T_static is computed in the solver from T0 and M via isentropic relation
+        # so we don't return it from CEA here (CEA's eps-based T is unreliable for chamber)
+        return float(gamma), float(cp), float(mu), float(Pr)
 
     def mach_from_area(self, A, gamma, branch): 
         area_ratio = A/self.At
