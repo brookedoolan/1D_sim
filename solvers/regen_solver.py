@@ -3,12 +3,13 @@ from correlations.correlations import haaland, gnielinski
 
 class RegenSolver:
 
-    def __init__(self, geometry, coolant, gas, material, flow_direction):
+    def __init__(self, geometry, coolant, gas, material, flow_direction, film_cooling=None):
 
         self.geom = geometry
         self.coolant = coolant
         self.gas = gas
         self.material = material
+        self.film_cooling = film_cooling  # optional FilmCooling instance
 
         N = geometry.n_nodes
 
@@ -34,6 +35,10 @@ class RegenSolver:
         self.q_rad = np.zeros(N) # Radiative component
         self.T_wg = np.zeros(N)  # Gas side wall temp
         self.T_wl = np.zeros(N)  # Coolant side wall temp
+
+        # Film cooling
+        self.eta_film = np.zeros(N)  # Film effectiveness at each node (0 if no film cooling)
+        self.T_aw_eff = np.zeros(N)  # Effective adiabatic wall temp (modified by film)
 
 
     def solve(self, T_in, P_in):
@@ -94,6 +99,17 @@ class RegenSolver:
             # T_static from isentropic relation — correct for all nodes including chamber
             self.T_g[i] = self.gas.T0 / (1 + (gamma-1)/2 * self.M[i]**2)
 
+        # PHASE 1b: PRECOMPUTE FILM COOLING EFFECTIVENESS (if active)
+        # Uses reference chamber diameter for Gater-L'Ecuyer s/D_ref scaling
+        if self.film_cooling is not None:
+            D_ref = 2 * self.geom.r[0]  # chamber diameter at injector face
+            self.eta_film = self.film_cooling.effectiveness(
+                self.geom.x,
+                self.cp_g,
+                self.gas.mdot,
+                D_ref
+            )
+
         # PHASE 2: THERMAL MARCHING
         for k in range(N-1):
             i = march_nodes[k]
@@ -143,17 +159,18 @@ class RegenSolver:
 
                 # Bartz recovery factor (classical turbulent reco)
                 r_factor = (Pr_g)**(1/3)
-                # Bartz recovery factor - added dependancy on wall temp??
-                #r_factor = (Pr_g**(1/3))*(T_wg/T0)**0.25
 
-                # Adiabatic wall temp
+                # Adiabatic wall temp (no film cooling)
                 T_aw = T0*((1+r_factor*(gamma-1)/2*M**2)
                         /(1+(gamma-1)/2*M**2)
                 )
 
-                # Film temp
-                #T_film = 0.5*(T_wg+T0)
-                #mu_film = self.gas.viscosity_from_T(T_film, T_ref=Tg, mu_ref=mu_g)
+                # Film cooling: reduce effective T_aw
+                if self.film_cooling is not None:
+                    eta = self.eta_film[i]
+                    T_aw_use = self.film_cooling.effective_T_aw(T_aw, eta)
+                else:
+                    T_aw_use = T_aw
 
                 # Eckert reference temperature: T* = 0.5*(T_wg + T_static) + 0.22*(T_aw - T_static)
                 # Tg is T_static here; previous form incorrectly used T0 instead of T_static
@@ -175,8 +192,8 @@ class RegenSolver:
                 SIGMA_SB = 5.67e-8  # W/m²/K⁴
                 q_rad = self.gas.emissivity * SIGMA_SB * (Tg**4 - T_wg**4)
 
-                # Convective heat flux from gas side
-                q_conv = h_g * (T_aw - T_wg)
+                # Convective heat flux from gas side (uses film-corrected T_aw)
+                q_conv = h_g * (T_aw_use - T_wg)
 
                 # Total heat into wall
                 q = q_conv + q_rad
@@ -196,6 +213,7 @@ class RegenSolver:
             self.q_rad[i] = q_rad
             self.T_wg[i] = T_wg
             self.T_wl[i] = self.T_c[i] + q/h_c
+            self.T_aw_eff[i] = T_aw_use  # store for plotting
 
             # ----- ENERGY UPDATE ------
             S_g = 2*np.pi*r*dx
@@ -218,6 +236,7 @@ class RegenSolver:
             self.T_wl[0] = self.T_wl[1]
             self.rho_c[0] = self.rho_c[1]
             self.u_c[0] = self.u_c[1]
+            self.T_aw_eff[0] = self.T_aw_eff[1]
         else:
             self.M[-1] = self.M[-2]
             self.T_wg[-1] = self.T_wg[-2]
@@ -226,3 +245,4 @@ class RegenSolver:
             self.T_wl[-1] = self.T_wl[-2]
             self.rho_c[-1] = self.rho_c[-2]
             self.u_c[-1] = self.u_c[-2]
+            self.T_aw_eff[-1] = self.T_aw_eff[-2]
