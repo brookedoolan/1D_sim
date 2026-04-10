@@ -40,27 +40,20 @@ class FilmCooling:
         Parameters
         ----------
         x : array [m]
-            Axial positions.
-        cp_g_arr : array [J/kg-K]
-            Gas specific heat at each node (frozen cp from CEA).
-        mdot_gas : float
-            Gas mass flow rate [kg/s].
-        D_ref : float
-            Reference diameter — use chamber diameter [m].
+        cp_g_arr : array [J/kg-K]  frozen gas cp at each node
+        mdot_gas : float [kg/s]
+        D_ref : float [m]  reference diameter (chamber diameter)
 
         Returns
         -------
-        eta : array
-            Film effectiveness η(x), in [0, 1].
-            Zero at nodes upstream of injection point.
+        eta : array, values in [0, 1], zero upstream of injection point.
         """
         eta = np.zeros(len(x))
 
-        # Distance from injection point along wall; only valid downstream of injection
         for i, xi in enumerate(x):
-            s = xi - self.injection_x  # positive = downstream of injection
+            s = xi - self.injection_x
             if s < 0:
-                continue  # upstream of film injection, no effect
+                continue
 
             cp_g = cp_g_arr[i]
             heat_cap_ratio = cp_g / self.cp_film
@@ -75,15 +68,5 @@ class FilmCooling:
         Reduce adiabatic wall temperature by film cooling effectiveness.
 
         T_aw_eff = T_aw - η * (T_aw - T_film)
-                 = (1 - η)*T_aw + η*T_film
-
-        Parameters
-        ----------
-        T_aw : array [K]
-        eta : array
-
-        Returns
-        -------
-        T_aw_eff : array [K]
         """
         return T_aw - eta * (T_aw - self.T_film)

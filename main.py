@@ -35,6 +35,8 @@ elif CHANNEL_MODE == "rpa":
     th_iw  = 1.5e-3
     no_web = 40
 
+HELIX_ANGLE = 30.0  # degrees from axial (0 = straight, typical range 10–30°)
+
 geom = EngineGeometry(
     x=x,
     r=r,
@@ -42,8 +44,10 @@ geom = EngineGeometry(
     H=H_channel,
     N_channels=no_web,
     t_wall=th_iw,
-    roughness=0  # m, absolute wall roughness (30 µm default)
+    roughness=0,          # m, absolute wall roughness
+    helix_angle=HELIX_ANGLE
 )
+print(f"Channel length: {geom.channel_length()*1e3:.1f} mm  (axial: {(x[-1]-x[0])*1e3:.1f} mm, helix: {HELIX_ANGLE}°)")
 
 coolant = CoolantModel(
     mdot=0.8182, # computing mdot = N*rho*V*A_channel from RPA
@@ -236,7 +240,7 @@ axs2[2].legend()
 axs2[2].grid(True)
 
 fig2.tight_layout(pad=3.0)
-plt.show()
+#plt.show()
 
 # ============================================================
 # FIGURE 3 — FILM COOLING DIAGNOSTICS
@@ -282,7 +286,7 @@ axq3b.set_ylabel("Radius (m)", color="tab:red")
 axq3b.tick_params(axis='y', labelcolor='tab:red')
 
 fig3.tight_layout(pad=3.0)
-plt.show()
+#plt.show()
 
 # ============================================================
 # FIGURE 4 — FILM COOLING COMPARISON (no film vs film)

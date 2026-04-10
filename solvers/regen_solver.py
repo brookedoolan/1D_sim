@@ -222,8 +222,8 @@ class RegenSolver:
 
             self.T_c[j] = self.T_c[i] + q*S_g/(mdot*cp_c)
 
-            # Pressure drop
-            dP = f*dx/dh[i]*rho_c*u**2/2 # This assumes velocity is constant, but changes
+            # Pressure drop — path_factor accounts for helical channel (ds = dx/cos(α))
+            dP = f * (dx * self.geom.path_factor) / dh[i] * rho_c * u**2 / 2
             self.P_c[j] = self.P_c[i] - dP
 
 

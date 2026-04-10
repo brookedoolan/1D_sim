@@ -30,11 +30,14 @@ class EngineGeometry:
     - Cooling channel geometry: straight, rectangular channels
     """
 
-    def __init__(self, x, r, a, H, N_channels, t_wall, roughness=1e-5):
+    def __init__(self, x, r, a, H, N_channels, t_wall, roughness=1e-5, helix_angle=0.0):
         """
         a, H can be scalars (constant channel) or arrays (varying channel).
-        roughness: absolute wall roughness in metres (default 10 µm).
-                   e.g. 5e-6 (5 µm) for machined, 50e-6 (50 µm) for rough/printed.
+        roughness    : absolute wall roughness in metres (default 10 µm).
+                       e.g. 5e-6 (5 µm) for machined, 50e-6 (50 µm) for rough/printed.
+        helix_angle  : channel helix angle in degrees measured from the axial direction
+                       (0 = straight axial channels, typical range 10–30°).
+                       Increases effective channel path length and pressure drop by 1/cos(α).
         """
         self.x = x
         self.r = r
@@ -42,6 +45,10 @@ class EngineGeometry:
         self.N = N_channels
         self.t_wall = t_wall
         self.roughness = roughness
+
+        import numpy as np
+        self.helix_angle = np.radians(helix_angle)  # store in radians
+        self.path_factor = 1.0 / np.cos(self.helix_angle)  # ds/dx — >1 for helical
 
         N = len(x)
         self.a = np.broadcast_to(np.asarray(a, dtype=float), (N,)).copy()
@@ -62,6 +69,11 @@ class EngineGeometry:
 
     def total_flow_area(self):
         return self.N*self.a*self.H
+
+    def channel_length(self):
+        """Total helical channel length [m] = axial engine length × path_factor."""
+        axial_length = self.x[-1] - self.x[0]
+        return axial_length * self.path_factor
 
     def throat_index(self):
         return np.argmin(self.r)
