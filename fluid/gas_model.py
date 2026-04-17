@@ -54,20 +54,26 @@ class GasModel:
 
         self.throat_index = np.argmin(self.geometry.r) # may be redundant
     
-    def properties(self, A):
+    def properties(self, A, branch='supersonic'):
         area_ratio = A/self.At
 
-        # Clamp to nozzle range: CEA eps is a nozzle expansion ratio (>=1).
-        # Chamber nodes have A/At > 1 on the subsonic side, which CEA would
-        # misinterpret as a supersonic expansion. Use throat (eps=1) properties
-        # for those nodes — transport properties are nearly constant anyway.
-        eps = max(1.0, area_ratio)
+        # Gamma: use actual area ratio on the supersonic side so the isentropic
+        # expansion (and Mach from area-Mach) uses the right thermochemistry.
+        # Subsonic chamber nodes have A/At > 1 but are NOT a supersonic expansion —
+        # use throat (eps=1) so CEA doesn't return wrong cold-gas properties.
+        eps_gamma = 1.0 if branch == 'subsonic' else max(1.0, area_ratio)
+
+        # Bartz transport reference: ALWAYS use throat (eps=1) for µ, cp, Pr.
+        # Standard Bartz practice — sigma accounts for local M/T variation.
+        # Using supersonic-exit eps here gave cold-gas µ/cp → h_g 20–25% too low
+        # in the chamber and ~18% too low in the diverging section.
+        eps_transport = 1.0
 
         # Gamma
         mw, gamma = self.cea.get_exit_MolWt_gamma(
             Pc=self.Pc_bar,
             MR=self.MR,
-            eps=eps,
+            eps=eps_gamma,
             frozen=0
         )
 
@@ -78,7 +84,7 @@ class GasModel:
         cp_tr, mu_millipoise, k_cm, Pr = self.cea.get_Exit_Transport(
             Pc=self.Pc_bar,
             MR=self.MR,
-            eps=eps,
+            eps=eps_transport,
             frozen=1
         )
 

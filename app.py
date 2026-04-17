@@ -214,7 +214,7 @@ class MainWindow(QMainWindow):
         self.MR        = dbl_spin(1.5,    0.5,  10,  0.1,  2)
         self.cstar     = dbl_spin(1688.9, 100, 4000, 10.0,  1, " m/s")
         self.mdot_gas  = dbl_spin(2.007,  0.01, 200, 0.01,  4, " kg/s")
-        self.emissivity= dbl_spin(0.14,   0.0,  1.0, 0.01,  2)
+        self.emissivity= dbl_spin(0.80,   0.0,  1.0, 0.01,  2)
         self.fuel_cb   = QComboBox(); self.fuel_cb.addItems(["Ethanol", "RP1", "CH4", "H2"])
         self.ox_cb     = QComboBox(); self.ox_cb.addItems(["LOX", "N2O4", "N2O"])
         f_eng.addRow("Pc",          self.Pc_bar)

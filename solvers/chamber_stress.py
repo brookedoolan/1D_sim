@@ -45,6 +45,9 @@ class ChamberStress:
             # Thermal tangential
             sigma_t_th[i] = E*aval*q*tw/(2*(1-nu)*k)
 
+            # NEED TO ADD IN THE THICK WALL THAT CONSIDERS CHANGE IN PC and coolant pressure along length!!!
+            # like in RPA output solver.
+
             # Global hoop — thin-wall pressure vessel, full structural thickness
             # t_total = inner wall + channel height + outer wall (assumed = t_wall)
             t_total = 2*tw + H

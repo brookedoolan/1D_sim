@@ -13,9 +13,10 @@ from geometry.rpa_loader import load_rpa_contour
 from solvers.chamber_stress import ChamberStress
 
 BASE_DIR = Path(__file__).resolve().parent # Project root (folder containing main.py)
-contour_path = BASE_DIR / "geometry" / "rpa_contours" / "contour2.txt"
+contour_path = BASE_DIR / "geometry" / "rpa_contours" / "rpa_35bar_contour.txt"
 x, r = load_rpa_contour(contour_path, n_points=300) # Import RPA contour (n_points controls resolution)
 
+SHOW_PLOTS = False     # set True to display figures
 CHANNEL_MODE = "rpa"  # "bruv" or "rpa"
 
 if CHANNEL_MODE == "bruv":
@@ -35,7 +36,7 @@ elif CHANNEL_MODE == "rpa":
     th_iw  = 1.5e-3
     no_web = 40
 
-HELIX_ANGLE = 30.0  # degrees from axial (0 = straight, typical range 10–30°)
+HELIX_ANGLE = 0.0  # degrees from axial (0 = straight, typical range 10–30°)
 
 geom = EngineGeometry(
     x=x,
@@ -44,7 +45,7 @@ geom = EngineGeometry(
     H=H_channel,
     N_channels=no_web,
     t_wall=th_iw,
-    roughness=0,          # m, absolute wall roughness
+    roughness=20e-6,          # m, absolute wall roughness
     helix_angle=HELIX_ANGLE
 )
 print(f"Channel length: {geom.channel_length()*1e3:.1f} mm  (axial: {(x[-1]-x[0])*1e3:.1f} mm, helix: {HELIX_ANGLE}°)")
@@ -62,13 +63,13 @@ gas = GasModel(
     fuel_name = 'Ethanol', # RocketCEA does NOT have IPA
     mdot = 2.00660, # total MFR kg/s
     cstar = 1688.88, # estimated delivered performance, reduced efficiency, ideal c* = 1727.32 m/s
-    emissivity = 0.14  # effective grey-gas emissivity for CO2/H2O combustion products (~0.13-0.15)
+    emissivity = 0.15  # effective emissivity for LOX/Ethanol; 0.15 calibrated against RPA
 )
 
 material = CuCr1Zr()
 
 # Film cooling (set FILM_COOLING = True to enable)
-FILM_COOLING = True
+FILM_COOLING = False
 
 # Pass 1: run without film to get actual coolant outlet conditions at injector face (x[0])
 _solver_p1 = RegenSolver(geom, coolant, gas, material, "nozzle_to_injector", film_cooling=None)
@@ -115,7 +116,9 @@ df = pd.DataFrame({
     "heat_flux_rad_W_m2": regen_solver.q_rad,
     "T_wg_K": regen_solver.T_wg,
     "T_wl_K": regen_solver.T_wl,
-    "T_c_K": regen_solver.T_c
+    "T_c_K": regen_solver.T_c,
+    "h_g_W_m2K": regen_solver.h_g,
+    "T_aw_K": regen_solver.T_aw,
 })
 df.to_csv(BASE_DIR / "results" / "solver_outputs.csv", index=False)
 
@@ -194,7 +197,7 @@ axRho.set_ylabel("Density (kg/m³)", color="tab:orange")
 axRho.tick_params(axis='y', labelcolor='tab:orange')
 
 fig1.tight_layout(pad=3.0)
-plt.show()
+if SHOW_PLOTS: plt.show()
 
 # ============================================================
 # FIGURE 2 — STRESS
@@ -240,7 +243,7 @@ axs2[2].legend()
 axs2[2].grid(True)
 
 fig2.tight_layout(pad=3.0)
-#plt.show()
+#if SHOW_PLOTS: plt.show()
 
 # ============================================================
 # FIGURE 3 — FILM COOLING DIAGNOSTICS
@@ -286,7 +289,7 @@ axq3b.set_ylabel("Radius (m)", color="tab:red")
 axq3b.tick_params(axis='y', labelcolor='tab:red')
 
 fig3.tight_layout(pad=3.0)
-#plt.show()
+#if SHOW_PLOTS: plt.show()
 
 # ============================================================
 # FIGURE 4 — FILM COOLING COMPARISON (no film vs film)
@@ -330,7 +333,7 @@ ax_q2.set_ylabel("Radius (m)", color="tab:red")
 ax_q2.tick_params(axis='y', labelcolor='tab:red')
 
 fig4.tight_layout(pad=2.0)
-plt.show()
+if SHOW_PLOTS: plt.show()
 
 """
 # -------- MATERIAL PROPERTY CURVES --------
@@ -358,5 +361,5 @@ ax1.legend(lines+lines2,labels+labels2,loc="upper right")
 
 plt.title("CuCr1Zr Material Properties vs Temperature")
 plt.tight_layout()
-plt.show()
+if SHOW_PLOTS: plt.show()
 """

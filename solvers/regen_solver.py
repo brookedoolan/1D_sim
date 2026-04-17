@@ -1,5 +1,8 @@
 import numpy as np
-from correlations.correlations import haaland, gnielinski
+from correlations.correlations import (
+    colebrook, dittus_boelter, fin_efficiency, regen_thermal_resistance,
+    # haaland, gnielinski, sieder_tate  # available alternatives
+)
 
 class RegenSolver:
 
@@ -35,6 +38,8 @@ class RegenSolver:
         self.q_rad = np.zeros(N) # Radiative component
         self.T_wg = np.zeros(N)  # Gas side wall temp
         self.T_wl = np.zeros(N)  # Coolant side wall temp
+        self.h_g = np.zeros(N)   # Gas-side HTC (Bartz)
+        self.T_aw = np.zeros(N)  # Adiabatic wall temp (before film correction)
 
         # Film cooling
         self.eta_film = np.zeros(N)  # Film effectiveness at each node (0 if no film cooling)
@@ -76,8 +81,17 @@ class RegenSolver:
             r = self.geom.r[i]
             A = np.pi*self.geom.r[i]**2
 
-            # Gas properties from CEA
-            gamma, cp, mu, Pr = self.gas.properties(A)
+            # Determine branch first — needed so properties() uses the correct
+            # CEA eps for gamma (subsonic chamber ≠ supersonic nozzle at same A/At)
+            if i < self.gas.throat_index:
+                branch = "subsonic"
+            elif i == self.gas.throat_index:
+                branch = "throat"
+            else:
+                branch = "supersonic"
+
+            # Gas properties from CEA (transport always at throat reference)
+            gamma, cp, mu, Pr = self.gas.properties(A, branch=branch)
 
             self.gamma_g[i] = gamma
             self.cp_g[i] = cp
@@ -85,14 +99,10 @@ class RegenSolver:
             self.Pr_g[i] = Pr
 
             # Mach from area-Mach relation
-            if i < self.gas.throat_index:
-                branch = "subsonic"
-            elif i == self.gas.throat_index:
+            if branch == "throat":
                 self.M[i] = 1.0
                 self.T_g[i] = self.gas.T0 * 2/(gamma+1)
                 continue
-            else:
-                branch = "supersonic"
 
             self.M[i] = self.gas.mach_from_area(A, gamma, branch)
 
@@ -140,7 +150,8 @@ class RegenSolver:
             Re = G*dh[i]/mu_c # Reynolds
             Pr_c = cp_c*mu_c/k_c # Prandtl
 
-            f = haaland(Re, dh[i], eps=self.geom.roughness)
+            # f = haaland(Re, dh[i], eps=self.geom.roughness)  # OLD Haaland friction factor
+            f = colebrook(Re, dh[i], eps=self.geom.roughness)
 
             # ----- GAS SIDE SIGMA ITERATION -------
             T_wg = self.T_c[i] + 50 # Initial guess
@@ -151,15 +162,19 @@ class RegenSolver:
 
             for _ in range(20):
 
-                # Sieder-Tate wall viscosity correction on Gnielinski
-                T_wl_safe = max(T_wl, self.T_c[i])  # guard against unphysical values during iteration
-                mu_w = self.coolant.properties(T_wl_safe, self.P_c[i])[1]
-                Nu = gnielinski(Re, Pr_c, f) * (mu_c / mu_w) ** 0.11
-                h_c = Nu*k_c/dh[i]
+                # Dittus-Boelter (no wall-viscosity correction)
+                Nu = dittus_boelter(Re, Pr_c, heating=True)
+                h_c = Nu * k_c / dh[i]
+
+                # # Sieder-Tate
+                # T_wl_safe = max(T_wl, self.T_c[i])  # guard against unphysical values during iteration
+                # mu_w = self.coolant.properties(T_wl_safe, self.P_c[i])[1]
+                # # Nu = gnielinski(Re, Pr_c, f) * (mu_c / mu_w) ** 0.11  # old: Gnielinski + ST correction
+                # Nu = sieder_tate(Re, Pr_c, mu_c, mu_w)
+                # h_c = Nu * k_c / dh[i]
 
                 # Bartz recovery factor (classical turbulent reco)
                 r_factor = (Pr_g)**(1/3)
-
                 # Adiabatic wall temp (no film cooling)
                 T_aw = T0*((1+r_factor*(gamma-1)/2*M**2)
                         /(1+(gamma-1)/2*M**2)
@@ -189,7 +204,7 @@ class RegenSolver:
                 k_w = self.material.thermal_conductivity(T_wg)
 
                 # Radiative heat flux — grey gas: q_rad = ε·σ·(T_g⁴ - T_wg⁴)
-                SIGMA_SB = 5.67e-8  # W/m²/K⁴
+                SIGMA_SB = 5.67e-8  # Stefan-Boltzmann coeff (W/m²/K⁴)
                 q_rad = self.gas.emissivity * SIGMA_SB * (Tg**4 - T_wg**4)
 
                 # Convective heat flux from gas side (uses film-corrected T_aw)
@@ -198,12 +213,20 @@ class RegenSolver:
                 # Total heat into wall
                 q = q_conv + q_rad
 
-                # Wall + coolant resistance (coolant side only — radiation enters at gas-wall surface)
-                R_rest = self.geom.t_wall/k_w + 1/h_c
+                # Fin efficiency for channel side walls (webs)
+                b = max(self.geom.web_width()[i], 1e-7)  # web width at this station
+                eta_f = fin_efficiency(h_c, k_w, self.geom.H[i], b)
+
+                # Cylindrical wall + fin-corrected coolant resistance
+                # R_rest_flat = self.geom.t_wall/k_w + 1/h_c  # old flat-wall form
+                R_rest, R_cool = regen_thermal_resistance(
+                    h_c, k_w, r, self.geom.t_wall,
+                    self.geom.N, self.geom.a[i], self.geom.H[i], eta_f
+                )
 
                 # T_wg from coolant-side balance: q = (T_wg - T_c) / R_rest
                 T_wg_new = self.T_c[i] + q * R_rest
-                T_wl = self.T_c[i] + q/h_c
+                T_wl = self.T_c[i] + q * R_cool
 
                 if abs(T_wg_new-T_wg)<tol:
                     break
@@ -212,19 +235,29 @@ class RegenSolver:
             self.q[i] = q
             self.q_rad[i] = q_rad
             self.T_wg[i] = T_wg
-            self.T_wl[i] = self.T_c[i] + q/h_c
+            self.T_wl[i] = T_wl
+            self.h_g[i] = h_g
+            self.T_aw[i] = T_aw
             self.T_aw_eff[i] = T_aw_use  # store for plotting
+
+            # ----- PRESSURE DROP (computed first — P[j] needed for enthalpy inversion) ------
+            # path_factor accounts for helical channel (ds = dx/cos(α))
+            dP = f * (dx * self.geom.path_factor) / dh[i] * rho_c * u**2 / 2
+            self.P_c[j] = self.P_c[i] - dP
 
             # ----- ENERGY UPDATE ------
             S_g = 2*np.pi*r*dx
             # changed so only accounts for area of channel interfacing with chamber wall (i.e. not full channel)
-            #S_g = self.geom.N * self.geom.a[i] * dx
+            # S_g = self.geom.N * self.geom.a[i] * dx
 
-            self.T_c[j] = self.T_c[i] + q*S_g/(mdot*cp_c)
+            # --- OLD: incremental cp*ΔT (approximation, inaccurate near phase change) ---
+            # self.T_c[j] = self.T_c[i] + q*S_g/(mdot*cp_c)
 
-            # Pressure drop — path_factor accounts for helical channel (ds = dx/cos(α))
-            dP = f * (dx * self.geom.path_factor) / dh[i] * rho_c * u**2 / 2
-            self.P_c[j] = self.P_c[i] - dP
+            # --- NEW: enthalpy-based (Cardiff REDS approach, exact through CoolProp) ---
+            # P[j] already computed above so enthalpy inversion uses correct pressure
+            h_i = self.coolant.enthalpy(self.T_c[i], self.P_c[i])
+            h_j = h_i + q * S_g / mdot
+            self.T_c[j] = self.coolant.T_from_enthalpy(h_j, self.P_c[j])
 
 
         # Fill boundary node never reached by thermal march
@@ -234,6 +267,8 @@ class RegenSolver:
             self.q[0] = self.q[1]
             self.q_rad[0] = self.q_rad[1]
             self.T_wl[0] = self.T_wl[1]
+            self.h_g[0] = self.h_g[1]
+            self.T_aw[0] = self.T_aw[1]
             self.rho_c[0] = self.rho_c[1]
             self.u_c[0] = self.u_c[1]
             self.T_aw_eff[0] = self.T_aw_eff[1]
@@ -243,6 +278,8 @@ class RegenSolver:
             self.q[-1] = self.q[-2]
             self.q_rad[-1] = self.q_rad[-2]
             self.T_wl[-1] = self.T_wl[-2]
+            self.h_g[-1] = self.h_g[-2]
+            self.T_aw[-1] = self.T_aw[-2]
             self.rho_c[-1] = self.rho_c[-2]
             self.u_c[-1] = self.u_c[-2]
             self.T_aw_eff[-1] = self.T_aw_eff[-2]
