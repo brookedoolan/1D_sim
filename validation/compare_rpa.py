@@ -94,6 +94,7 @@ def print_comparison_table(rpa_df, sim_df):
         "T_wg    [K]"    : ("T_wg_K",      1.0),
         "T_wl/wc [K]"    : ("T_wl_K",      1.0),
         "T_c     [K]"    : ("T_c_K",       1.0),
+        "P_c     [MPa]"  : ("P_c_MPa",     1.0),
     }
 
     rpa_map = {
@@ -105,6 +106,7 @@ def print_comparison_table(rpa_df, sim_df):
         "T_wg_K":     "T_wg_K",
         "T_wl_K":     "T_wc_K",
         "T_c_K":      "T_c_K",
+        "P_c_MPa":    "P_c_MPa",
     }
 
     # Station indices on RPA grid
@@ -119,31 +121,36 @@ def print_comparison_table(rpa_df, sim_df):
     print(f"{'Station':<22} {'Variable':<18} {'RPA':>12} {'1D Sim':>12} {'Error %':>10}")
     print("="*80)
 
-    # Extra unit scale for columns whose RPA value needs an additional conversion
-    rpa_extra_scale = {"h_g_W_m2K": 1e3}   # RPA h_g is in kW/m²K → multiply by 1e3
+    # Unit conversions needed before comparison (applied to both RPA and sim values)
+    rpa_extra_scale = {"h_g_W_m2K": 1e3}    # RPA h_g kW/m²K → W/m²K
+    sim_col_remap   = {"P_c_MPa": ("P_c_Pa", 1e-6)}  # sim stores Pa; display as MPa
 
     for station_name, idx in stations.items():
         x_q = x_grid[idx]
         for label, (sim_col, scale) in channels.items():
             rpa_col = rpa_map[sim_col]
 
+            # Resolve sim column + any unit conversion
+            actual_sim_col, sim_unit_scale = sim_col_remap.get(sim_col, (sim_col, 1.0))
+
             if rpa_col is None:
-                # No RPA equivalent — just print our value
-                if sim_col in sim_df.columns:
-                    sim_val = interp_onto(sim_df["x_m"].values, sim_df[sim_col].values, x_q) / scale
+                if actual_sim_col in sim_df.columns:
+                    sim_val = interp_onto(sim_df["x_m"].values,
+                                         sim_df[actual_sim_col].values * sim_unit_scale, x_q) / scale
                     print(f"  {station_name:<20} {label:<18} {'N/A':>12} {sim_val:>12.2f} {'—':>10}")
                 continue
 
             extra = rpa_extra_scale.get(sim_col, 1.0)
             rpa_val = rpa_df[rpa_col].iloc[idx] * extra / scale
 
-            if sim_col in sim_df.columns:
+            if actual_sim_col in sim_df.columns:
                 sim_val_interp = interp_onto(sim_df["x_m"].values,
-                                             sim_df[sim_col].values, x_q) / scale
+                                             sim_df[actual_sim_col].values * sim_unit_scale,
+                                             x_q) / scale
                 err = percent_error(sim_val_interp, rpa_val)
-                print(f"  {station_name:<20} {label:<18} {rpa_val:>12.2f} {sim_val_interp:>12.2f} {err:>+10.1f}%")
+                print(f"  {station_name:<20} {label:<18} {rpa_val:>12.4f} {sim_val_interp:>12.4f} {err:>+10.1f}%")
             else:
-                print(f"  {station_name:<20} {label:<18} {rpa_val:>12.2f} {'N/A':>12} {'—':>10}")
+                print(f"  {station_name:<20} {label:<18} {rpa_val:>12.4f} {'N/A':>12} {'—':>10}")
         print()
 
     print("="*80)
@@ -152,22 +159,30 @@ def print_comparison_table(rpa_df, sim_df):
 # ── Plots ─────────────────────────────────────────────────────────────────────
 
 def plot_comparison(rpa_df, sim_df, save_dir=None):
-    x_rpa = rpa_df["x_m"].values * 1e3   # → mm for readability
+    x_rpa = rpa_df["x_m"].values * 1e3   # -> mm for readability
     x_sim = sim_df["x_m"].values  * 1e3
 
+    sim_P_MPa = sim_df["P_c_Pa"] / 1e6 if "P_c_Pa" in sim_df.columns else None
+    sim_hg    = sim_df["h_g_W_m2K"] if "h_g_W_m2K" in sim_df.columns else None
+
     pairs = [
-        ("Total heat flux [kW/m²]", rpa_df["q_total_W"]/1e3,    sim_df["q_total_W"]/1e3),
-        ("Conv. heat flux [kW/m²]", rpa_df["q_conv_W"]/1e3,     sim_df["q_conv_W"]/1e3),
-        ("Rad. heat flux [kW/m²]",  rpa_df["q_rad_W"]/1e3,      sim_df["q_rad_W"]/1e3),
-        ("T_wg [K]",                rpa_df["T_wg_K"],            sim_df["T_wg_K"]),
-        ("T_wl/wc [K]",             rpa_df["T_wc_K"],            sim_df["T_wl_K"]),
-        ("T_coolant [K]",           rpa_df["T_c_K"],             sim_df["T_c_K"]),
+        ("Total heat flux [kW/m²]",  rpa_df["q_total_W"]/1e3,  sim_df["q_total_W"]/1e3),
+        ("Conv. heat flux [kW/m²]",  rpa_df["q_conv_W"]/1e3,   sim_df["q_conv_W"]/1e3),
+        ("Rad. heat flux [kW/m²]",   rpa_df["q_rad_W"]/1e3,    sim_df["q_rad_W"]/1e3),
+        ("h_g [W/m²K]",              rpa_df["h_g_kW_m2K"]*1e3, sim_hg),
+        ("T_wg [K]",                 rpa_df["T_wg_K"],          sim_df["T_wg_K"]),
+        ("T_wl/wc [K]",              rpa_df["T_wc_K"],          sim_df["T_wl_K"]),
+        ("T_coolant [K]",            rpa_df["T_c_K"],           sim_df["T_c_K"]),
+        ("Coolant pressure [MPa]",   rpa_df["P_c_MPa"],         sim_P_MPa),
     ]
 
-    fig, axes = plt.subplots(3, 2, figsize=(14, 12))
+    fig, axes = plt.subplots(4, 2, figsize=(14, 16))
     fig.suptitle("RPA vs 1D Sim Comparison", fontsize=14, fontweight="bold")
 
     for ax, (title, y_rpa, y_sim) in zip(axes.flat, pairs):
+        if y_sim is None:
+            ax.set_visible(False)
+            continue
         ax.plot(x_rpa, y_rpa, "k-",  lw=2,   label="RPA")
         ax.plot(x_sim, y_sim, "r--", lw=1.5, label="1D Sim")
         ax.set_title(title)
@@ -187,16 +202,20 @@ def plot_percent_error(rpa_df, sim_df, save_dir=None):
     x_rpa = rpa_df["x_m"].values
 
     channels = {
-        "q_total": ("q_total_W", "q_total_W"),
-        "q_conv":  ("q_conv_W",  "q_conv_W"),
-        "T_wg":    ("T_wg_K",    "T_wg_K"),
-        "T_wl/wc": ("T_wc_K",   "T_wl_K"),
-        "T_c":     ("T_c_K",    "T_c_K"),
+        "q_total": ("q_total_W",    "q_total_W",    1.0),
+        "q_conv":  ("q_conv_W",     "q_conv_W",     1.0),
+        "h_g":     ("h_g_kW_m2K",   "h_g_W_m2K",    1e-3),  # RPA kW→W via /1e-3
+        "T_wg":    ("T_wg_K",       "T_wg_K",       1.0),
+        "T_wl/wc": ("T_wc_K",       "T_wl_K",       1.0),
+        "T_c":     ("T_c_K",        "T_c_K",        1.0),
+        "P_c":     ("P_c_MPa",      "P_c_Pa",       1e-6),  # sim Pa→MPa via *1e-6
     }
 
     fig, ax = plt.subplots(figsize=(12, 5))
-    for label, (rpa_col, sim_col) in channels.items():
-        sim_interp = interp_onto(sim_df["x_m"].values, sim_df[sim_col].values, x_rpa)
+    for label, (rpa_col, sim_col, sim_scale) in channels.items():
+        if sim_col not in sim_df.columns:
+            continue
+        sim_interp = interp_onto(sim_df["x_m"].values, sim_df[sim_col].values * sim_scale, x_rpa)
         err = percent_error(sim_interp, rpa_df[rpa_col].values)
         ax.plot(x_rpa * 1e3, err, label=label, lw=1.5)
 
@@ -211,6 +230,57 @@ def plot_percent_error(rpa_df, sim_df, save_dir=None):
     plt.tight_layout()
     if save_dir:
         out = Path(save_dir) / "rpa_percent_error.png"
+        plt.savefig(out, dpi=150)
+        print(f"Figure saved -> {out}")
+    plt.show()
+
+
+# ── Thermal resistance comparison ────────────────────────────────────────────
+
+def plot_thermal_resistance(rpa_df, sim_df, save_dir=None):
+    """
+    Back-calculate R_total, R_cyl, R_cool from temperatures and heat flux,
+    then compare RPA vs sim on the same axes.
+
+        R_total = (T_wg - T_c)  / q_total   [m²·K/W]
+        R_cyl   = (T_wg - T_wl) / q_total   [m²·K/W]
+        R_cool  = (T_wl - T_c)  / q_total   [m²·K/W]
+    """
+    x_rpa = rpa_df["x_m"].values * 1e3
+    x_sim = sim_df["x_m"].values  * 1e3
+
+    # RPA resistances (all columns already in K and W/m²)
+    q_rpa   = rpa_df["q_total_W"].values
+    R_tot_rpa  = (rpa_df["T_wg_K"].values - rpa_df["T_c_K"].values)  / q_rpa
+    R_cyl_rpa  = (rpa_df["T_wg_K"].values - rpa_df["T_wc_K"].values) / q_rpa
+    R_cool_rpa = (rpa_df["T_wc_K"].values - rpa_df["T_c_K"].values)  / q_rpa
+
+    # Sim resistances
+    q_sim   = sim_df["q_total_W"].values
+    R_tot_sim  = (sim_df["T_wg_K"].values - sim_df["T_c_K"].values)  / q_sim
+    R_cyl_sim  = (sim_df["T_wg_K"].values - sim_df["T_wl_K"].values) / q_sim
+    R_cool_sim = (sim_df["T_wl_K"].values - sim_df["T_c_K"].values)  / q_sim
+
+    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
+    fig.suptitle("Thermal Resistance Comparison: RPA vs 1D Sim", fontsize=13, fontweight="bold")
+
+    panels = [
+        ("R_total [m²·K/W]",   R_tot_rpa,  R_tot_sim),
+        ("R_cyl   [m²·K/W]",   R_cyl_rpa,  R_cyl_sim),
+        ("R_cool  [m²·K/W]",   R_cool_rpa, R_cool_sim),
+    ]
+
+    for ax, (title, y_rpa, y_sim) in zip(axes, panels):
+        ax.plot(x_rpa, y_rpa, "k-",  lw=2,   label="RPA")
+        ax.plot(x_sim, y_sim, "r--", lw=1.5, label="1D Sim")
+        ax.set_title(title)
+        ax.set_xlabel("x [mm]")
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    if save_dir:
+        out = Path(save_dir) / "rpa_thermal_resistance.png"
         plt.savefig(out, dpi=150)
         print(f"Figure saved -> {out}")
     plt.show()
@@ -234,6 +304,7 @@ def main():
     print_comparison_table(rpa_df, sim_df)
     plot_comparison(rpa_df, sim_df, save_dir=args.save)
     plot_percent_error(rpa_df, sim_df, save_dir=args.save)
+    plot_thermal_resistance(rpa_df, sim_df, save_dir=args.save)
 
 
 if __name__ == "__main__":

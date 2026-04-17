@@ -19,10 +19,7 @@ class CuCr1Zr:
         
 
     def thermal_conductivity(self, T):
-        # Replace with actual data
-        # Typical CuCr1Zr
-        # ~330 W/mk at 300 K
-        # ~280 W/mK at 700 K
+        # Typical CuCr1Zr: ~320 W/m·K
         return 320
     
     def youngs_modulus(self,T):

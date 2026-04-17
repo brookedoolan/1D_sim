@@ -36,7 +36,7 @@ elif CHANNEL_MODE == "rpa":
     th_iw  = 1.5e-3
     no_web = 40
 
-HELIX_ANGLE = 0.0  # degrees from axial (0 = straight, typical range 10–30°)
+HELIX_ANGLE = 30.0  # degrees from axial (0 = straight, typical range 10–30°)
 
 geom = EngineGeometry(
     x=x,
@@ -45,7 +45,7 @@ geom = EngineGeometry(
     H=H_channel,
     N_channels=no_web,
     t_wall=th_iw,
-    roughness=20e-6,          # m, absolute wall roughness
+    roughness=0,          # m, absolute wall roughness
     helix_angle=HELIX_ANGLE
 )
 print(f"Channel length: {geom.channel_length()*1e3:.1f} mm  (axial: {(x[-1]-x[0])*1e3:.1f} mm, helix: {HELIX_ANGLE}°)")
@@ -63,7 +63,7 @@ gas = GasModel(
     fuel_name = 'Ethanol', # RocketCEA does NOT have IPA
     mdot = 2.00660, # total MFR kg/s
     cstar = 1688.88, # estimated delivered performance, reduced efficiency, ideal c* = 1727.32 m/s
-    emissivity = 0.15  # effective emissivity for LOX/Ethanol; 0.15 calibrated against RPA
+    emissivity = 0.175  # effective emissivity for LOX/Ethanol; 0.15 calibrated against RPA
 )
 
 material = CuCr1Zr()
@@ -119,6 +119,7 @@ df = pd.DataFrame({
     "T_c_K": regen_solver.T_c,
     "h_g_W_m2K": regen_solver.h_g,
     "T_aw_K": regen_solver.T_aw,
+    "P_c_Pa": regen_solver.P_c,
 })
 df.to_csv(BASE_DIR / "results" / "solver_outputs.csv", index=False)
 

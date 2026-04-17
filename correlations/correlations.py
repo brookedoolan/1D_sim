@@ -52,8 +52,6 @@ def sieder_tate(Re, Pr, mu_bulk, mu_wall):
     """
     Full Sieder-Tate Nusselt number
 
-    Nu = 0.027 * Re^0.8 * Pr^(1/3) * (mu_bulk/mu_wall)^0.14
-
     Valid for Re > 10 000, 0.7 < Pr < 16 700, L/D > 10.
     """
     return 0.027 * Re**0.8 * Pr**(1/3) * (mu_bulk / mu_wall)**0.14
@@ -82,7 +80,7 @@ def fin_efficiency(h_c, k_w, H, b):
     return float(np.tanh(mH) / mH)
 
 
-def regen_thermal_resistance(h_c, k_w, r, t_wall, N, a, H, eta_f):
+def regen_thermal_resistance(h_c, k_w, r, t_wall, N, a, H, eta_f, path_factor=1.0):
     """
     Effective thermal resistance per unit gas-side area [m²·K/W]. Uses cylindrical wall conduction.
 
@@ -114,5 +112,6 @@ def regen_thermal_resistance(h_c, k_w, r, t_wall, N, a, H, eta_f):
     R_cool  : coolant-side resistance only [m²·K/W]  (used for T_wl)
     """
     R_cyl  = r * np.log(1.0 + t_wall / r) / k_w
-    R_cool = 2 * np.pi * r / (h_c * N * (2 * eta_f * H + a))
+    #R_cyl = t_wall / k_w # flat wall approx instead
+    R_cool = 2 * np.pi * r / (h_c * N * (2 * eta_f * H + a) * path_factor)
     return R_cyl + R_cool, R_cool

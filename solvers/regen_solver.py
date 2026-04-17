@@ -221,7 +221,8 @@ class RegenSolver:
                 # R_rest_flat = self.geom.t_wall/k_w + 1/h_c  # old flat-wall form
                 R_rest, R_cool = regen_thermal_resistance(
                     h_c, k_w, r, self.geom.t_wall,
-                    self.geom.N, self.geom.a[i], self.geom.H[i], eta_f
+                    self.geom.N, self.geom.a[i], self.geom.H[i], eta_f,
+                    path_factor=self.geom.path_factor
                 )
 
                 # T_wg from coolant-side balance: q = (T_wg - T_c) / R_rest
