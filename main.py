@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-from geometry.straight_geom import EngineGeometry
+from geometry.straight_geom import EngineGeometry, piecewise_channel
 from fluid.coolant_model import CoolantModel
 from fluid.gas_model import GasModel
 from fluid.film_cooling import FilmCooling
@@ -13,7 +13,7 @@ from geometry.rpa_loader import load_rpa_contour
 from solvers.chamber_stress import ChamberStress
 
 BASE_DIR = Path(__file__).resolve().parent # Project root (folder containing main.py)
-contour_path = BASE_DIR / "geometry" / "rpa_contours" / "rpa_35bar_contour.txt"
+contour_path = BASE_DIR / "geometry" / "rpa_contours" / "rpa_35bar_newcontour.txt"
 x, r = load_rpa_contour(contour_path, n_points=300) # Import RPA contour (n_points controls resolution)
 
 SHOW_PLOTS = False     # set True to display figures
@@ -30,11 +30,14 @@ if CHANNEL_MODE == "bruv":
     H_channel = th_web
 
 elif CHANNEL_MODE == "rpa":
-    # Fixed channel width and height — web width b(x) varies naturally with contour radius
-    a_channel = 1.5e-3   # m, channel width (fixed)
-    H_channel = 1.5e-3   # m, channel height (fixed)
+    # Piecewise channel: varies linearly chamber→throat→nozzle exit
     th_iw  = 1.5e-3
     no_web = 40
+    a_channel, H_channel = piecewise_channel(
+        x, r,
+        a1=2.0e-3, a_min=1.0e-3, a2=2.0e-3,   # width:  chamber, throat, nozzle exit
+        H1=2.0e-3, H_min=1.0e-3, H2=2.0e-3,   # height: chamber, throat, nozzle exit
+    )
 
 HELIX_ANGLE = 30.0  # degrees from axial (0 = straight, typical range 10–30°)
 
@@ -77,10 +80,10 @@ _solver_p1.solve(T_in=298, P_in=4.5e6)
 
 film = None
 if FILM_COOLING:
-    # Coolant exits regen channels at x[0] (injector face) — use those conditions for film
-    T_film = _solver_p1.T_c[0]           # K, actual coolant outlet temp from regen channels
-    P_film = _solver_p1.P_c[0]           # Pa, actual coolant outlet pressure
-    _, _, _, cp_film = coolant.properties(T_film, P_film)  # CoolProp cp at outlet conditions
+    # Match RPA film coolant conditions: 400 K, 4.2 MPa at injection
+    T_film = 400.0                        # K — matches RPA film coolant input
+    P_film = _solver_p1.P_c[0]           # Pa, coolant-side pressure at injector face
+    _, _, _, cp_film = coolant.properties(T_film, P_film)  # CoolProp cp at film conditions
 
     mdot_film_frac = 0.1                 # fraction of total propellant mdot used as film
     mdot_film = gas.mdot * mdot_film_frac / (1 + gas.MR)  # fuel fraction of total mdot
@@ -120,6 +123,8 @@ df = pd.DataFrame({
     "h_g_W_m2K": regen_solver.h_g,
     "T_aw_K": regen_solver.T_aw,
     "P_c_Pa": regen_solver.P_c,
+    "u_c_ms": regen_solver.u_c,
+    "rho_c_kgm3": regen_solver.rho_c,
 })
 df.to_csv(BASE_DIR / "results" / "solver_outputs.csv", index=False)
 
@@ -244,6 +249,7 @@ axs2[2].legend()
 axs2[2].grid(True)
 
 fig2.tight_layout(pad=3.0)
+fig2.savefig(BASE_DIR / "results" / "stress.png", dpi=150)
 #if SHOW_PLOTS: plt.show()
 
 # ============================================================

@@ -165,6 +165,9 @@ def plot_comparison(rpa_df, sim_df, save_dir=None):
     sim_P_MPa = sim_df["P_c_Pa"] / 1e6 if "P_c_Pa" in sim_df.columns else None
     sim_hg    = sim_df["h_g_W_m2K"] if "h_g_W_m2K" in sim_df.columns else None
 
+    sim_u_c   = sim_df["u_c_ms"]    if "u_c_ms"    in sim_df.columns else None
+    sim_rho_c = sim_df["rho_c_kgm3"] if "rho_c_kgm3" in sim_df.columns else None
+
     pairs = [
         ("Total heat flux [kW/m²]",  rpa_df["q_total_W"]/1e3,  sim_df["q_total_W"]/1e3),
         ("Conv. heat flux [kW/m²]",  rpa_df["q_conv_W"]/1e3,   sim_df["q_conv_W"]/1e3),
@@ -174,9 +177,11 @@ def plot_comparison(rpa_df, sim_df, save_dir=None):
         ("T_wl/wc [K]",              rpa_df["T_wc_K"],          sim_df["T_wl_K"]),
         ("T_coolant [K]",            rpa_df["T_c_K"],           sim_df["T_c_K"]),
         ("Coolant pressure [MPa]",   rpa_df["P_c_MPa"],         sim_P_MPa),
+        ("Coolant velocity [m/s]",   rpa_df["w_c_ms"],          sim_u_c),
+        ("Coolant density [kg/m³]",  rpa_df["rho_c_kgm3"],      sim_rho_c),
     ]
 
-    fig, axes = plt.subplots(4, 2, figsize=(14, 16))
+    fig, axes = plt.subplots(5, 2, figsize=(14, 20))
     fig.suptitle("RPA vs 1D Sim Comparison", fontsize=14, fontweight="bold")
 
     for ax, (title, y_rpa, y_sim) in zip(axes.flat, pairs):
