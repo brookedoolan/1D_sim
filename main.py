@@ -236,8 +236,8 @@ if SHOW_PLOTS: plt.show()
 # ============================================================
 # FIGURE 2 — STRESS
 # ============================================================
-yield_strength = np.array([material.yield_strength(T)/1e6 for T in regen_solver.T_wg])
-uts = np.array([material.ultimate_strength(T)/1e6 for T in regen_solver.T_wg])
+yield_strength = np.array([material.yield_strength(T) for T in regen_solver.T_wg])
+uts = np.array([material.ultimate_strength(T) for T in regen_solver.T_wg])
 
 fig2, axs2 = plt.subplots(1, 3, figsize=(20, 6))
 

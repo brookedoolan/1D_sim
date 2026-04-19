@@ -57,15 +57,18 @@ class ChamberStress:
 
             # 2. Thermal tangential — biaxial compressive on the hot face
             delta_T_wall = q * tw / k
-            sigma_t_th[i] = -E * aval * delta_T_wall / (2.0 * (1.0 - nu))
+            sigma_t_th[i] = E * aval * delta_T_wall / (2.0 * (1.0 - nu))
 
             # 3. Global hoop — Lamé thick-wall, inner=gas, outer=atmospheric (gauge ≈ 0)
             t_total = 2.0 * tw + H
             b_r = r + t_total
-            sigma_t_global[i] = _thick_wall_hoop(P_gas, 0.0, r, b_r, r)
+            #sigma_t_global[i] = _thick_wall_hoop(P_gas, 0.0, r, b_r, r)
+
+            # 3 Thin wall approx for global hoop
+            sigma_t_global[i] = P_gas * r / t_total
 
             # 4. Longitudinal — biaxial constraint same as tangential for symmetric hot face
-            sigma_l[i] = -E * aval * delta_T_wall #/ (2.0 * (1.0 - nu))
+            sigma_l[i] = E * aval * delta_T_wall
 
             # 5. Von Mises (biaxial plane stress)
             sigma_hoop = sigma_t[i] + sigma_t_th[i] + sigma_t_global[i]
