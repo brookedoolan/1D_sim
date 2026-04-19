@@ -6,7 +6,7 @@ from pathlib import Path
 from geometry.straight_geom import EngineGeometry, piecewise_channel
 from fluid.coolant_model import CoolantModel
 from fluid.gas_model import GasModel
-from fluid.film_cooling import FilmCooling
+from fluid.film_cooling import FilmCooling, ZucrowSellersFilm
 from solvers.regen_solver import RegenSolver
 from materials.cucr1zr import CuCr1Zr
 from geometry.rpa_loader import load_rpa_contour
@@ -35,8 +35,8 @@ elif CHANNEL_MODE == "rpa":
     no_web = 40
     a_channel, H_channel = piecewise_channel(
         x, r,
-        a1=2.0e-3, a_min=1.0e-3, a2=2.0e-3,   # width:  chamber, throat, nozzle exit
-        H1=2.0e-3, H_min=1.0e-3, H2=2.0e-3,   # height: chamber, throat, nozzle exit
+        a1=1.5e-3, a_min=1.0e-3, a2=1.5e-3,   # width:  chamber, throat, nozzle exit
+        H1=1.5e-3, H_min=1.0e-3, H2=1.5e-3,   # height: chamber, throat, nozzle exit
     )
 
 HELIX_ANGLE = 30.0  # degrees from axial (0 = straight, typical range 10–30°)
@@ -54,25 +54,26 @@ geom = EngineGeometry(
 print(f"Channel length: {geom.channel_length()*1e3:.1f} mm  (axial: {(x[-1]-x[0])*1e3:.1f} mm, helix: {HELIX_ANGLE}°)")
 
 coolant = CoolantModel(
-    mdot=0.8182, # computing mdot = N*rho*V*A_channel from RPA
+    mdot=0.72044, # computing mdot = N*rho*V*A_channel from RPA
     fluid_name="Ethanol"  # CoolProp fluid string
 )
 
 gas = GasModel(
     Pc_bar = 35, # chamber pressure in bar
-    MR = 1.5, # O/F mass ratio
+    MR = 1.75, # O/F mass ratio
     geometry = geom,
     ox_name = 'LOX',
     fuel_name = 'Ethanol', # RocketCEA does NOT have IPA
-    mdot = 2.00660, # total MFR kg/s
-    cstar = 1688.88, # estimated delivered performance, reduced efficiency, ideal c* = 1727.32 m/s
-    emissivity = 0.175  # effective emissivity for LOX/Ethanol; 0.15 calibrated against RPA
+    mdot = 1.98121, # total MFR kg/s
+    cstar = 1729.27, # estimated delivered performance, reduced efficiency, ideal c* = 1727.32 m/s
+    emissivity = 0.09  # effective emissivity for LOX/Ethanol; 0.15 calibrated against RPA
 )
 
 material = CuCr1Zr()
 
-# Film cooling (set FILM_COOLING = True to enable)
-FILM_COOLING = False
+# Film cooling config
+FILM_COOLING = True
+FILM_MODEL   = "zucrow_sellers"  # "gater_lecuyer" or "zucrow_sellers"
 
 # Pass 1: run without film to get actual coolant outlet conditions at injector face (x[0])
 _solver_p1 = RegenSolver(geom, coolant, gas, material, "nozzle_to_injector", film_cooling=None)
@@ -80,22 +81,48 @@ _solver_p1.solve(T_in=298, P_in=4.5e6)
 
 film = None
 if FILM_COOLING:
-    # Match RPA film coolant conditions: 400 K, 4.2 MPa at injection
-    T_film = 400.0                        # K — matches RPA film coolant input
-    P_film = _solver_p1.P_c[0]           # Pa, coolant-side pressure at injector face
-    _, _, _, cp_film = coolant.properties(T_film, P_film)  # CoolProp cp at film conditions
+    from CoolProp.CoolProp import PropsSI
+    T_film = 400.0                         # K — film injection temperature
+    P_film = _solver_p1.P_c[0]            # Pa, coolant-side pressure at injector face
 
-    mdot_film_frac = 0.1                 # fraction of total propellant mdot used as film
-    mdot_film = gas.mdot * mdot_film_frac / (1 + gas.MR)  # fuel fraction of total mdot
+    mdot_film_frac = 0.1                   # fraction of fuel mdot (matches RPA convention)
+    mdot_film = gas.mdot * mdot_film_frac / (1 + gas.MR)
 
-    film = FilmCooling(
-        mdot_film=mdot_film,
-        T_film=T_film,
-        cp_film=cp_film,
-        injection_x=geom.x[0],           # injector face
-        A_coeff=0.329                     # Gater-L'Ecuyer slot injection constant
-    )
-    print(f"Film: T_film={T_film:.1f} K, cp_film={cp_film:.0f} J/kg-K, mdot_film={mdot_film:.4f} kg/s")
+    if FILM_MODEL == "gater_lecuyer":
+        _, _, _, cp_film = coolant.properties(T_film, P_film)
+        film = FilmCooling(
+            mdot_film=mdot_film,
+            T_film=T_film,
+            cp_film=cp_film,
+            injection_x=geom.x[0],
+            A_coeff=0.5
+        )
+        print(f"Film (G-L): mdot={mdot_film:.4f} kg/s, T_film={T_film:.1f} K, cp={cp_film:.0f} J/kg-K")
+
+    elif FILM_MODEL == "zucrow_sellers":
+        # Ethanol thermophysical properties via CoolProp
+        C_plc = PropsSI("C", "T", T_film, "P", P_film, "Ethanol")        # liquid cp at injection [J/kg-K]
+        T_sat = PropsSI("T", "P", P_film, "Q", 0, "Ethanol")              # saturation temp at injection pressure
+        dH_vc = PropsSI("H", "P", P_film, "Q", 1, "Ethanol") - PropsSI("H", "P", P_film, "Q", 0, "Ethanol")  # latent heat
+        C_pvc = PropsSI("C", "T", T_sat + 50, "P", P_film * 0.5, "Ethanol")  # vapour cp (superheated, lower P)
+        film = ZucrowSellersFilm(
+            mdot_film=mdot_film,
+            T_film=T_film,
+            C_plc=C_plc,
+            C_pvc=C_pvc,
+            dH_vc=dH_vc,
+            mdot_gas=gas.mdot,
+            injection_x=geom.x[0],
+            eta_c=0.25,
+            f_friction=0.035,
+            Vg_Vd=1.2,
+            decay_mode="gl",   # "none" = pure Z-S uniform, "gl" = hybrid decay from eta=1
+            A_coeff=0.37,
+            x_geom=geom.x,
+            r_geom=geom.r,
+        )
+        print(f"Film (Z-S): mdot={mdot_film:.4f} kg/s, T_film={T_film:.1f} K")
+        print(f"  C_plc={C_plc:.0f}, C_pvc={C_pvc:.0f}, dH_vc={dH_vc/1e3:.1f} kJ/kg")
 
 # Pass 2: full solve with film (or reuse pass-1 if film is off)
 if FILM_COOLING:
@@ -125,6 +152,7 @@ df = pd.DataFrame({
     "P_c_Pa": regen_solver.P_c,
     "u_c_ms": regen_solver.u_c,
     "rho_c_kgm3": regen_solver.rho_c,
+    "eta_film": regen_solver.eta_film,
 })
 df.to_csv(BASE_DIR / "results" / "solver_outputs.csv", index=False)
 

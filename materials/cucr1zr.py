@@ -16,7 +16,6 @@ class CuCr1Zr:
     def __init__(self):
         self.alpha = 16.35e-6 # 1/K
         self.nu = 0.38
-        
 
     def thermal_conductivity(self, T):
         # Typical CuCr1Zr: ~320 W/m·K
@@ -35,11 +34,16 @@ class CuCr1Zr:
         Min Non-heat-treated yield strength:
         - Horizontal: 170 MPa
         - Vertical: 165 MPa
+
+        
+        Heat-treated yield strength GOALS:
+        - Mean YS: 200 MPa
         """
 
         Y_SAA = -2.2847E-4*T**2 - 0.13931*T + 292.19
         Y_SAA_Nikon = Y_SAA - 65.39
-        return Y_SAA_Nikon
+        Y_SAA_Nikon_HT = Y_SAA - 43.6
+        return max(float(Y_SAA_Nikon_HT), 0.0)
     
     def ultimate_strength(self,T):
         """
@@ -47,11 +51,15 @@ class CuCr1Zr:
         Min non-heat-trated UTS:
         - Horizontal: 250 MPa
         - Vertical: 215 MPa
+
+        Heat-treated UTS GOALS:
+        - Mean UTS: 320 MPa
         """
 
         UTS_SAA = -0.42631*T + 413.45
         UTS_SAA_Nikon = UTS_SAA - 72.41
-        return UTS_SAA_Nikon
+        UTS_SAA_Nikon_HT = UTS_SAA + 31.4
+        return max(float(UTS_SAA_Nikon_HT), 0.0)
     
     def poisson_ratio(self, T=None):
         return self.nu

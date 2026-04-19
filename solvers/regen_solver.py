@@ -3,6 +3,7 @@ from correlations.correlations import (
     colebrook, dittus_boelter, fin_efficiency, regen_thermal_resistance,
     # haaland, gnielinski, sieder_tate  # available alternatives
 )
+from fluid.film_cooling import ZucrowSellersFilm
 
 class RegenSolver:
 
@@ -109,12 +110,13 @@ class RegenSolver:
             # T_static from isentropic relation — correct for all nodes including chamber
             self.T_g[i] = self.gas.T0 / (1 + (gamma-1)/2 * self.M[i]**2)
 
-        # PHASE 1b: PRECOMPUTE FILM COOLING EFFECTIVENESS (if active)
-        # Uses reference chamber diameter for Gater-L'Ecuyer s/D_ref scaling
-        if self.film_cooling is not None:
+        # PHASE 1b: PRECOMPUTE FILM COOLING EFFECTIVENESS (Gater-L'Ecuyer only)
+        # Zucrow-Sellers is evaluated on-the-fly inside the σ-iteration (needs local T_aw, T_c)
+        if self.film_cooling is not None and not isinstance(self.film_cooling, ZucrowSellersFilm):
             D_ref = 2 * self.geom.r[0]  # chamber diameter at injector face
             self.eta_film = self.film_cooling.effectiveness(
                 self.geom.x,
+                self.geom.r,
                 self.cp_g,
                 self.gas.mdot,
                 D_ref
@@ -181,7 +183,10 @@ class RegenSolver:
                 )
 
                 # Film cooling: reduce effective T_aw
-                if self.film_cooling is not None:
+                if self.film_cooling is not None and isinstance(self.film_cooling, ZucrowSellersFilm):
+                    T_aw_use = self.film_cooling.effective_T_aw(T_aw, self.T_c[i], cp_g, x=self.geom.x[i])
+                    self.eta_film[i] = self.film_cooling.local_eta(T_aw, self.T_c[i], cp_g, x=self.geom.x[i])
+                elif self.film_cooling is not None:
                     eta = self.eta_film[i]
                     T_aw_use = self.film_cooling.effective_T_aw(T_aw, eta)
                 else:
